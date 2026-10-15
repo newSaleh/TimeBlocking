@@ -1,0 +1,13 @@
+{
+  "name": "pocket-time",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pocket Time — a private, end-to-end encrypted time-blocking pocket notebook.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "e2e": "node build.mjs && node e2e/run.mjs"
+  },
+  "license": "MIT"
+}

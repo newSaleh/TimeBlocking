@@ -1,0 +1,135 @@
+{
+  "date": "2026-10-15T10:14:55.130Z",
+  "results": [
+    {
+      "name": "First run: passphrase rules, vault creation, one-time recovery code",
+      "ok": true,
+      "ms": 693
+    },
+    {
+      "name": "1. Add a task in seconds (type + Return)",
+      "ok": true,
+      "ms": 92
+    },
+    {
+      "name": "2. Add a task without a time",
+      "ok": true,
+      "ms": 34
+    },
+    {
+      "name": "3. Add a task with start and end in one line",
+      "ok": true,
+      "ms": 51
+    },
+    {
+      "name": "Quick add understands \"tomorrow\" and can be ignored",
+      "ok": true,
+      "ms": 149
+    },
+    {
+      "name": "4. Arabic-Indic digits become 123 (typing, pasting, saved data)",
+      "ok": true,
+      "ms": 88
+    },
+    {
+      "name": "5. Change a task time (10:00-style edit) without recreating it",
+      "ok": true,
+      "ms": 703
+    },
+    {
+      "name": "Overlapping times are flagged quietly, not blocked",
+      "ok": true,
+      "ms": 32
+    },
+    {
+      "name": "6. Move a task to tomorrow",
+      "ok": true,
+      "ms": 575
+    },
+    {
+      "name": "7. Mark done, then not done (one tap each, no confirmation)",
+      "ok": true,
+      "ms": 298
+    },
+    {
+      "name": "Delete with undo",
+      "ok": true,
+      "ms": 499
+    },
+    {
+      "name": "8. Close and reopen: data is still there, no passphrase asked",
+      "ok": true,
+      "ms": 111
+    },
+    {
+      "name": "Second device: wrong passphrase rejected, right one unlocks once",
+      "ok": true,
+      "ms": 798
+    },
+    {
+      "name": "9. Edit on iPhone → appears on laptop, and back",
+      "ok": true,
+      "ms": 1863
+    },
+    {
+      "name": "10. Same task edited on both devices: no silent loss",
+      "ok": true,
+      "ms": 1487
+    },
+    {
+      "name": "11. Offline: keeps working, says so calmly, syncs when back",
+      "ok": true,
+      "ms": 505
+    },
+    {
+      "name": "Closing the page before it could sync loses nothing",
+      "ok": true,
+      "ms": 473
+    },
+    {
+      "name": "Earlier open tasks are offered, never moved automatically",
+      "ok": true,
+      "ms": 390
+    },
+    {
+      "name": "12. Arabic RTL and English LTR",
+      "ok": true,
+      "ms": 1636
+    },
+    {
+      "name": "13. Small iPhone, 320px, dark mode and laptop layouts",
+      "ok": true,
+      "ms": 757
+    },
+    {
+      "name": "Laptop keyboard: n focuses the composer, arrows change day, Esc closes",
+      "ok": true,
+      "ms": 158
+    },
+    {
+      "name": "Recovery code: forgot passphrase on a new device",
+      "ok": true,
+      "ms": 621
+    },
+    {
+      "name": "Export a plain copy through the download capability",
+      "ok": true,
+      "ms": 328
+    },
+    {
+      "name": "14. No notifications and no permission prompts",
+      "ok": true,
+      "ms": 4
+    },
+    {
+      "name": "15. Server holds ciphertext only",
+      "ok": true,
+      "ms": 1
+    },
+    {
+      "name": "16. No third-party requests, no errors, no task content in logs",
+      "ok": true,
+      "ms": 0
+    }
+  ]
+}
