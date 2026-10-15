@@ -1,9 +1,9 @@
 /*
-Pocket Time: copy today's or tomorrow's reminders as import lines.
-Asks which day, keeps reminders from the lists "Reminders" and
-"REPETITIVE مكرر" that are not completed and are due that day, and copies
-one line per reminder ("yyyy-MM-dd HH:mm Title") to the clipboard.
-Nothing is sent anywhere. Paste in Pocket Time › ⋯ › Import tasks.
+Pocket Time: copy reminders as import lines.
+Keeps reminders from the lists "Reminders" and "REPETITIVE مكرر" that are
+not completed and have a due date, and copies one line per reminder
+("yyyy-MM-dd HH:mm Title") to the clipboard. Pocket Time then shows only
+today's or tomorrow's. Nothing is sent anywhere.
 */
 
 #define name Pocket Time
@@ -12,15 +12,6 @@ Nothing is sent anywhere. Paste in Pocket Time › ⋯ › Import tasks.
 
 #include 'actions/calendar'
 #include 'actions/sharing'
-
-@day
-menu "مهام أي يوم؟" {
-    item "غدًا":
-        const tomorrow = adjustDate("{CurrentDate}", "Add", 1, "days")
-        @day = formatDate(tomorrow, "Custom", "yyyy-MM-dd")
-    item "اليوم":
-        @day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
-}
 
 const reminders = rawAction("is.workflow.actions.filter.reminders", {
     "WFContentItemFilter": {
@@ -47,7 +38,7 @@ const reminders = rawAction("is.workflow.actions.filter.reminders", {
 })
 
 const total = count(reminders)
-@dayCount = 0
+@withDate = 0
 @copied = 0
 @seenLists = ""
 
@@ -56,41 +47,38 @@ const total = count(reminders)
 for item in reminders {
     @dueText = "{item['Due Date']}"
     if dueText {
-        const dueDay = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd")
-        if dueDay == day {
-            @dayCount = dayCount + 1
-            @listName = "{item['List']}"
-            @fromMyLists = 0
-            if listName contains "Reminders" {
-                @fromMyLists = 1
-            }
-            if listName contains "REPETITIVE" {
-                @fromMyLists = 1
-            }
-            if listName contains "مكرر" {
-                @fromMyLists = 1
-            }
-            if fromMyLists == 1 {
-                @copied = copied + 1
-                const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
-                @lines += "
+        @withDate = withDate + 1
+        @listName = "{item['List']}"
+        @fromMyLists = 0
+        if listName contains "Reminders" {
+            @fromMyLists = 1
+        }
+        if listName contains "REPETITIVE" {
+            @fromMyLists = 1
+        }
+        if listName contains "مكرر" {
+            @fromMyLists = 1
+        }
+        if fromMyLists == 1 {
+            @copied = copied + 1
+            const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
+            @lines += "
 {due} {item['Title']}"
-            } else {
-                @seenLists += " [{listName}]"
-            }
+        } else {
+            @seenLists += " [{listName}]"
         }
     }
 }
 
 if copied > 0 {
     setClipboard(lines)
-    alert("نُسخت {copied} مهمة. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
+    alert("نُسخت مهامك. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
 } else {
     alert("لم أجد مهام للنسخ.
 التذكيرات غير المنجزة: {total}
-المستحقة يوم {day}: {dayCount}
+منها بتاريخ: {withDate}
 من قائمتي Reminders و REPETITIVE: {copied}
-قوائم أخرى لهذا اليوم:{seenLists}
+قوائم أخرى:{seenLists}
 
 صوّر هذه الرسالة وأرسلها لي.", "Pocket Time")
 }

@@ -2623,7 +2623,7 @@ const AR = {
   importAdd: { zero: 'لا شيء للإضافة', one: 'إضافة مهمة واحدة', two: 'إضافة مهمتين', few: 'إضافة {n} مهام', many: 'إضافة {n} مهمة', other: 'إضافة {n} مهمة' },
   imported: { zero: 'لم يُضف شيء', one: 'أُضيفت مهمة واحدة', two: 'أُضيفت مهمتان', few: 'أُضيفت {n} مهام', many: 'أُضيفت {n} مهمة', other: 'أُضيفت {n} مهمة' },
   shortcutTitle: 'اختصار جاهز',
-  shortcutHint: 'أضفه مرة واحدة إلى تطبيق Shortcuts. يسألك: اليوم أم غدًا؟ ثم ينسخ مهام ذلك اليوم من قائمتي Reminders و REPETITIVE مكرر. بعدها افتح Pocket Time ← استيراد مهام ← لصق.',
+  shortcutHint: 'أضفه مرة واحدة إلى تطبيق Shortcuts. شغّله فينسخ مهامك من قائمتي Reminders و REPETITIVE مكرر، ثم افتح Pocket Time ← استيراد مهام ← لصق، واختر اليوم أو غدًا.',
   shortcutGet: 'إضافة الاختصار',
   importHowTitle: 'أو اصنعه بنفسك خطوة بخطوة',
   importSteps: 'افتح تطبيق Shortcuts واضغط +.\nأضف Find Reminders، ثم Add Filter واختر: Is Completed ← is not true.\nأضف Repeat with Each.\nداخل التكرار أضف Text، واكتب فيه: Repeat Item ← Due Date (اضغط عليه واختر Date Format ← Custom واكتب yyyy-MM-dd HH:mm)، ثم مسافة، ثم Repeat Item ← Title.\nبعد End Repeat أضف Combine Text واختر New Lines، ثم Copy to Clipboard.\nقبل النوم شغّل الاختصار، ثم افتح Pocket Time ← ⋯ ← استيراد مهام ← لصق. تُختار مهام الغد تلقائيًا ولا تتكرر المهام الموجودة.',
@@ -2794,7 +2794,7 @@ const EN = {
   importAdd: { one: 'Add 1 task', other: 'Add {n} tasks' },
   imported: { one: '1 task added', other: '{n} tasks added' },
   shortcutTitle: 'Ready-made Shortcut',
-  shortcutHint: 'Add it to the Shortcuts app once. It asks “today or tomorrow?”, then copies that day’s reminders from the Reminders and REPETITIVE lists. Then open Pocket Time › Import tasks › Paste.',
+  shortcutHint: 'Add it to the Shortcuts app once. Run it to copy your reminders from the Reminders and REPETITIVE lists, then open Pocket Time › Import tasks › Paste and pick today or tomorrow.',
   shortcutGet: 'Add the Shortcut',
   importHowTitle: 'Or build it yourself, step by step',
   importSteps: 'Open the Shortcuts app and tap +.\nAdd Find Reminders, then Add Filter: Is Completed is not true.\nAdd Repeat with Each.\nInside it add Text containing: Repeat Item › Due Date (tap it, Date Format › Custom: yyyy-MM-dd HH:mm), a space, then Repeat Item › Title.\nAfter End Repeat add Combine Text with New Lines, then Copy to Clipboard.\nBefore bed run the Shortcut, then open Pocket Time › ⋯ › Import tasks › Paste. Tomorrow’s tasks are selected for you and existing ones are not repeated.',
@@ -4564,10 +4564,14 @@ function openImport(text) {
   openSheet('import', sheet);
 }
 
-// Text from the Shortcut carries one date (today or tomorrow): use it.
+// Text from the Shortcut carries dates. If it has tasks for only one of
+// today and tomorrow, switch to that day.
 function followPastedDate(s) {
-  const dates = new Set(parseImportLines(s.text, todayKey()).map((it) => it.date).filter(Boolean));
-  if (dates.size === 1) s.target = [...dates][0];
+  const today = todayKey();
+  const tomorrow = addDays(today, 1);
+  const dates = new Set(parseImportLines(s.text, today).map((it) => it.date).filter(Boolean));
+  const near = [today, tomorrow].filter((d) => dates.has(d));
+  if (near.length === 1) s.target = near[0];
 }
 
 // Tasks imported before are remembered on this device, so importing the
@@ -4602,12 +4606,13 @@ function importItems() {
     const key = importKey(date, title);
     return known.get(date).has(key) || before.has(key);
   };
-  // Text from the Shortcut has dates: then only the chosen day is pre-selected.
+  // Text from the Shortcut has dates: then only the chosen day is shown.
   const dated = items.some((it) => it.date);
   const seen = new Set();
   const out = [];
   let skipped = 0;
   items.forEach((it, i) => {
+    if (dated && it.date !== s.target) return;
     const date = it.date || s.target;
     const id = importKey(date, it.title);
     if (seen.has(id) || isKnown(date, it.title)) {
@@ -4616,9 +4621,9 @@ function importItems() {
     }
     seen.add(id);
     const key = `${i}|${it.title}`;
-    const auto = it.date ? it.date === s.target : !dated;
-    out.push({ ...it, date, id, key, on: key in s.picks ? s.picks[key] : auto });
+    out.push({ ...it, date, id, key, on: key in s.picks ? s.picks[key] : true });
   });
+  out.sort((a, b) => (a.start || '99').localeCompare(b.start || '99'));
   out.skipped = skipped;
   return out;
 }

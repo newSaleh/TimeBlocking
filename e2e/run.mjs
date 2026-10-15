@@ -416,8 +416,8 @@ await step('Import from Reminders: paste, tomorrow pre-selected, no duplicates',
   await P.fill('#importText', lines);
   await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
   const checked = await P.evaluate(() => [...document.querySelectorAll('.import-item input')].map((x) => x.checked));
-  // "شراء هدية" was moved to tomorrow earlier, so it is left out.
-  assert(JSON.stringify(checked) === JSON.stringify([true, true, false]), 'selection ' + JSON.stringify(checked));
+  // Only tomorrow's lines are shown; "شراء هدية" was moved to tomorrow earlier, so it is left out.
+  assert(JSON.stringify(checked) === JSON.stringify([true, true]), 'selection ' + JSON.stringify(checked));
   assert((await P.textContent('#sheet [data-k="importSkipped"]')).includes('مهمة واحدة'), 'skipped note');
   await P.waitForTimeout(200);
   await P.screenshot({ path: `${shots}/import-iphone.png` });
@@ -434,7 +434,7 @@ await step('Import from Reminders: paste, tomorrow pre-selected, no duplicates',
   await P.fill('#importText', lines);
   await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
   const left = await P.evaluate(() => [...document.querySelectorAll('.import-item .task-title')].map((x) => x.textContent));
-  assert(JSON.stringify(left) === JSON.stringify(['مهمة بعيدة']), 'only the far-away task remains: ' + JSON.stringify(left));
+  assert(JSON.stringify(left) === '[]', 'nothing left for tomorrow: ' + JSON.stringify(left));
   assert((await P.textContent('#sheet [data-k="importSkipped"]')).includes('3'), 'three skipped');
   await closeSheet(P);
   await P.click('#todayBtn');

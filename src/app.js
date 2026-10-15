@@ -1641,10 +1641,14 @@ function openImport(text) {
   openSheet('import', sheet);
 }
 
-// Text from the Shortcut carries one date (today or tomorrow): use it.
+// Text from the Shortcut carries dates. If it has tasks for only one of
+// today and tomorrow, switch to that day.
 function followPastedDate(s) {
-  const dates = new Set(parseImportLines(s.text, todayKey()).map((it) => it.date).filter(Boolean));
-  if (dates.size === 1) s.target = [...dates][0];
+  const today = todayKey();
+  const tomorrow = addDays(today, 1);
+  const dates = new Set(parseImportLines(s.text, today).map((it) => it.date).filter(Boolean));
+  const near = [today, tomorrow].filter((d) => dates.has(d));
+  if (near.length === 1) s.target = near[0];
 }
 
 // Tasks imported before are remembered on this device, so importing the
@@ -1679,12 +1683,13 @@ function importItems() {
     const key = importKey(date, title);
     return known.get(date).has(key) || before.has(key);
   };
-  // Text from the Shortcut has dates: then only the chosen day is pre-selected.
+  // Text from the Shortcut has dates: then only the chosen day is shown.
   const dated = items.some((it) => it.date);
   const seen = new Set();
   const out = [];
   let skipped = 0;
   items.forEach((it, i) => {
+    if (dated && it.date !== s.target) return;
     const date = it.date || s.target;
     const id = importKey(date, it.title);
     if (seen.has(id) || isKnown(date, it.title)) {
@@ -1693,9 +1698,9 @@ function importItems() {
     }
     seen.add(id);
     const key = `${i}|${it.title}`;
-    const auto = it.date ? it.date === s.target : !dated;
-    out.push({ ...it, date, id, key, on: key in s.picks ? s.picks[key] : auto });
+    out.push({ ...it, date, id, key, on: key in s.picks ? s.picks[key] : true });
   });
+  out.sort((a, b) => (a.start || '99').localeCompare(b.start || '99'));
   out.skipped = skipped;
   return out;
 }
