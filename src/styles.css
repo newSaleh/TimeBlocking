@@ -1050,3 +1050,22 @@ a.btn {
   flex: none;
   accent-color: var(--accent);
 }
+
+/* ---------- Repeat and copy ---------- */
+.rep-mark {
+  color: var(--accent);
+  font-weight: 700;
+}
+.weekday-chips .chip {
+  min-width: 44px;
+  justify-content: center;
+}
+.delete-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.btn.danger-btn {
+  color: var(--danger);
+}

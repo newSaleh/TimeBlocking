@@ -28,6 +28,35 @@ export const TITLE_MAX = 300;
 export const NOTES_MAX = 2000;
 const bucketAad = (id) => `pocket-time/v1/bucket/${id}`;
 
+// Repeating tasks. A series is a hidden template record with a `rep` rule:
+//   { freq: 'daily' } or { freq: 'days', days: [0..6] }, plus optional `until`.
+// Its occurrences are shown on matching days without being stored. The first
+// time one is touched (done, edited, moved, deleted) it is stored under a
+// predictable id, so two devices touching the same occurrence merge into one.
+export const occurrenceId = (seriesId, date) => `${seriesId}~${date}`;
+
+export function parseOccurrenceId(id) {
+  const m = /^([a-z0-9]+)~(\d{4}-\d{2}-\d{2})$/.exec(String(id || ''));
+  return m ? { series: m[1], date: m[2] } : null;
+}
+
+function hashString(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+export function occursOn(series, date) {
+  const r = series && series.rule;
+  if (!r || date < series.from || (r.until && date > r.until)) return false;
+  if (r.freq === 'daily') return true;
+  const [y, mo, d] = date.split('-').map(Number);
+  return Array.isArray(r.days) && r.days.includes(new Date(y, mo - 1, d, 12).getDay());
+}
+
 export function cleanTitle(s) {
   return normalizeDigits(String(s || ''))
     .replace(/\s+/g, ' ')
@@ -200,6 +229,8 @@ export class SyncEngine {
     }
     if ('notes' in patch) task = setField(task, 'notes', cleanNotes(patch.notes), this.clock);
     if ('done' in patch) task = setField(task, 'done', Boolean(patch.done), this.clock);
+    if ('rep' in patch) task = setField(task, 'rep', patch.rep, this.clock);
+    if ('of' in patch) task = setField(task, 'of', patch.of, this.clock);
     if ('when' in patch) {
       const cur = (task.r.when && task.r.when.v) || {};
       const w = { date: cur.date, s: cur.s || null, e: cur.e || null, ...patch.when };
@@ -235,11 +266,61 @@ export class SyncEngine {
     this._commit(this.index.get(id), task);
   }
 
+  /** Whether a record with this id exists (deleted ones included). */
+  exists(id) {
+    return this.index.has(id);
+  }
+
+  createSeries({ title, notes = '', start = null, end = null, from, rule }) {
+    const id = randomId(12);
+    const fields = { title: cleanTitle(title), when: { date: from, s: start || null, e: start ? end || null : null }, done: false, rep: rule };
+    if (notes) fields.notes = cleanNotes(notes);
+    this._commit(this._bucketForNew(), newTask(id, fields, this.clock));
+    return id;
+  }
+
+  series() {
+    const out = [];
+    for (const bucket of this.buckets.values()) {
+      for (const t of Object.values(bucket.tasks)) {
+        if (!t.r.rep || !t.r.rep.v || isDeleted(t)) continue;
+        const when = (t.r.when && t.r.when.v) || {};
+        out.push({
+          id: t.id,
+          title: normalizeDigits((t.r.title && t.r.title.v) || ''),
+          notes: normalizeDigits((t.r.notes && t.r.notes.v) || ''),
+          start: when.s || null,
+          end: when.s ? when.e || null : null,
+          from: when.date,
+          rule: t.r.rep.v,
+          created: t.c,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Stores an occurrence of a series (if not stored yet) and returns its id. */
+  materialize(seriesId, date) {
+    const id = occurrenceId(seriesId, date);
+    if (this.index.has(id)) return id;
+    const s = this.series().find((x) => x.id === seriesId);
+    if (!s) return null;
+    const fields = { title: s.title, when: { date, s: s.start, e: s.end }, done: false, of: seriesId };
+    if (s.notes) fields.notes = s.notes;
+    // Starting values get a stamp that every device computes the same way,
+    // so a later edit on one device always beats the defaults of another.
+    const r = {};
+    for (const [f, v] of Object.entries(fields)) r[f] = { v, t: 0, d: 'seed-' + hashString(stableStringify(v)), h: [] };
+    this._commit(`r-${seriesId.slice(0, 10)}-${date.slice(0, 7).replace('-', '')}`, { id, c: s.created, r, x: {}, xd: {} });
+    return id;
+  }
+
   tasks() {
     const out = [];
     for (const [bucketId, bucket] of this.buckets) {
       for (const t of Object.values(bucket.tasks)) {
-        if (isDeleted(t)) continue;
+        if (isDeleted(t) || (t.r.rep && t.r.rep.v)) continue;
         const when = (t.r.when && t.r.when.v) || {};
         if (!when.date) continue;
         out.push({
@@ -252,6 +333,7 @@ export class SyncEngine {
           end: when.s ? when.e || null : null,
           done: Boolean(t.r.done && t.r.done.v),
           created: t.c,
+          of: (t.r.of && t.r.of.v) || null,
           conflicts: visibleConflicts(t),
         });
       }

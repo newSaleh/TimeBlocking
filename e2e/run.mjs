@@ -125,6 +125,11 @@ async function closeSheet(page) {
   await page.click('#sheet [data-k="close"]');
   await page.waitForSelector('#sheetLayer', { state: 'hidden' });
 }
+async function go(page, btn) {
+  const before = await page.textContent('#daySub');
+  await page.click(btn);
+  await poll(async () => (await page.textContent('#daySub')) !== before, 'day changed');
+}
 const noHorizontalScroll = (page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 
@@ -435,6 +440,64 @@ await step('Shortcut link (#import=...) opens the import screen filled in', asyn
   assert((await P.inputValue('#importText')) === '10:00 من الاختصار', 'prefilled');
   assert(!(await P.evaluate(() => location.hash)).includes('import'), 'hash cleared');
   await closeSheet(P);
+});
+
+await step('Repeat daily: shows on the next days, each day keeps its own done state, syncs', async () => {
+  await openTask(P, 'مكالمة');
+  await P.click('#sheet [data-k="rep-daily"]');
+  await P.waitForSelector('#sheet [data-k="rep-daily"][aria-pressed="true"]');
+  await P.waitForTimeout(250);
+  await P.screenshot({ path: `${shots}/repeat-iphone.png` });
+  await closeSheet(P);
+  assert((await row(P, 'مكالمة').locator('.rep-mark').count()) === 1, 'repeat mark today');
+  await go(P, '#nextBtn');
+  const r = row(P, 'مكالمة');
+  await r.waitFor();
+  assert((await r.locator('.task-time .start').textContent()) === '14:15', 'same time tomorrow');
+  await r.locator('.check').click();
+  await poll(async () => (await r.getAttribute('class')).includes('done'), 'tomorrow done');
+  await go(P, '#nextBtn');
+  await row(P, 'مكالمة').waitFor();
+  assert(!(await row(P, 'مكالمة').getAttribute('class')).includes('done'), 'day after is independent');
+  await go(P, '#todayBtn');
+  assert(!(await row(P, 'مكالمة').getAttribute('class')).includes('done'), 'today unaffected');
+  assert((await titles(P)).filter((x) => x === 'مكالمة').length === 1, 'no duplicate today');
+  await go(L, '#nextBtn');
+  await poll(async () => (await row(L, 'مكالمة').count()) === 1 && (await row(L, 'مكالمة').getAttribute('class')).includes('done'), 'laptop sees series and done', 25000);
+  await go(L, '#todayBtn');
+});
+
+await step('Repeat on certain days, then stop it from a later day', async () => {
+  await go(P, '#nextBtn');
+  await go(P, '#nextBtn');
+  await openTask(P, 'مكالمة');
+  await P.click('#sheet [data-k="rep-days"]');
+  await P.waitForSelector('#sheet .weekday-chips');
+  assert((await P.locator('#sheet .weekday-chips .chip').count()) === 7, 'seven day toggles');
+  await P.click('#sheet [data-k="delete"]');
+  await P.click('#sheet [data-k="deleteFollowing"]');
+  await P.waitForSelector('#sheetLayer', { state: 'hidden' });
+  await poll(async () => (await row(P, 'مكالمة').count()) === 0, 'gone from this day');
+  await go(P, '#nextBtn');
+  assert((await row(P, 'مكالمة').count()) === 0, 'and the days after');
+  await go(P, '#todayBtn');
+  await go(P, '#nextBtn');
+  await row(P, 'مكالمة').waitFor();
+  await go(P, '#todayBtn');
+  await row(P, 'مكالمة').waitFor();
+});
+
+await step('Copy a task to the next day', async () => {
+  await openTask(P, 'قراءة كتاب');
+  await P.click('#sheet [data-k="copyNext"]');
+  await P.waitForSelector('#toast:not([hidden])');
+  await closeSheet(P);
+  await go(P, '#nextBtn');
+  const r = row(P, 'قراءة كتاب');
+  await r.waitFor();
+  assert((await r.locator('.task-time .start').textContent()) === '14:00', 'copied with its time');
+  await go(P, '#todayBtn');
+  await row(P, 'قراءة كتاب').waitFor();
 });
 
 await step('Light / dark switch, and a red delete button', async () => {

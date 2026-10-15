@@ -22,7 +22,7 @@ import {
 } from './dates.js';
 import { parseQuickAdd, parseImportLines } from './parse.js';
 import { translator } from './i18n.js';
-import { SyncEngine } from './sync.js';
+import { SyncEngine, occursOn, occurrenceId, parseOccurrenceId } from './sync.js';
 import { openIdbStore, memoryStore } from './storage.js';
 import { claudeRemote, githubRemote } from './remote.js';
 import { newVault, importVaultKey, encodePairing, decodePairing, randomId } from './crypto.js';
@@ -190,8 +190,45 @@ function overlapsFor(scheduled) {
   return map;
 }
 
+// --- Repeating tasks: occurrences appear on matching days without being stored.
+
+function virtualOccurrence(s, date) {
+  return { id: occurrenceId(s.id, date), virtual: true, of: s.id, title: s.title, notes: s.notes, date, start: s.start, end: s.end, done: false, created: s.created, conflicts: [] };
+}
+
+function seriesOf(task) {
+  return task && task.of && engine ? engine.series().find((x) => x.id === task.of) || null : null;
+}
+
+function findTask(id) {
+  if (!engine) return null;
+  if (engine.exists(id)) return engine.get(id);
+  const occ = parseOccurrenceId(id);
+  if (!occ) return null;
+  const s = engine.series().find((x) => x.id === occ.series);
+  return s && occursOn(s, occ.date) ? virtualOccurrence(s, occ.date) : null;
+}
+
+// Stores an occurrence the first time it is changed.
+function realId(id) {
+  if (!engine.exists(id)) {
+    const occ = parseOccurrenceId(id);
+    if (occ) engine.materialize(occ.series, occ.date);
+  }
+  return id;
+}
+
+function updateTask(id, patch) {
+  engine.update(realId(id), patch);
+}
+
 function dayTasks(key) {
   const list = engine ? engine.tasks().filter((x) => x.date === key) : [];
+  if (engine) {
+    for (const s of engine.series()) {
+      if (occursOn(s, key) && !engine.exists(occurrenceId(s.id, key))) list.push(virtualOccurrence(s, key));
+    }
+  }
   const scheduled = list.filter((x) => x.start).sort((a, b) => a.start.localeCompare(b.start) || a.created - b.created);
   const anytime = list.filter((x) => !x.start).sort((a, b) => a.created - b.created);
   return { scheduled, anytime };
@@ -202,12 +239,13 @@ function carryTasks() {
   const today = todayKey();
   return engine
     .tasks()
-    .filter((x) => !x.done && x.date < today && diffDays(x.date, today) <= 14)
+    .filter((x) => !x.done && !x.of && x.date < today && diffDays(x.date, today) <= 14)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.start || '').localeCompare(b.start || ''));
 }
 
 function taskRow(task, info = {}) {
   const meta = [];
+  if (task.of) meta.push(h('span', { class: 'rep-mark', title: t('repeats'), 'aria-label': t('repeats') }, '↻'));
   if (info.overlap) meta.push(h('span', { class: 'tag' }, t('overlaps')));
   if (task.conflicts.length) meta.push(h('span', { class: 'tag' }, t('twoVersions')));
   if (task.notes) meta.push(h('span', { class: 'note-preview', dir: 'auto' }, task.notes.split('\n')[0]));
@@ -221,7 +259,7 @@ function taskRow(task, info = {}) {
         class: 'check',
         'aria-pressed': String(task.done),
         'aria-label': t(task.done ? 'markUndone' : 'markDone', { t: task.title }),
-        onclick: () => engine.update(task.id, { done: !task.done }),
+        onclick: () => updateTask(task.id, { done: !task.done }),
       },
       h('span', { class: 'check-ring' }, checkMark()),
     ),
@@ -522,7 +560,7 @@ function flushTitle() {
   if (!titleTarget || !engine) return;
   const { id, el } = titleTarget;
   const value = normalizeDigits(el.value).trim();
-  if (value) engine.update(id, { title: value });
+  if (value) updateTask(id, { title: value });
   titleTarget = null;
 }
 
@@ -533,7 +571,7 @@ function autosize(el) {
 
 function renderTaskSheet(first) {
   const id = ui.sheet.id;
-  const task = engine && engine.get(id);
+  const task = findTask(id);
   if (!task) {
     closeSheet();
     return;
@@ -565,7 +603,7 @@ function renderTaskSheet(first) {
     });
     title.addEventListener('blur', () => {
       flushTitle();
-      const current = engine.get(id);
+      const current = findTask(id);
       if (current && !title.value.trim()) title.value = current.title;
     });
 
@@ -583,7 +621,7 @@ function renderTaskSheet(first) {
     let notesTimer = null;
     const saveNotes = () => {
       clearTimeout(notesTimer);
-      engine.update(id, { notes: normalizeDigits(notes.value) });
+      updateTask(id, { notes: normalizeDigits(notes.value) });
     };
     notes.addEventListener('input', () => {
       autosize(notes);
@@ -616,7 +654,11 @@ function renderTaskSheet(first) {
     }
   }
 
-  $('taskDynamic').replaceChildren(dateField(task), timeField(task), ...conflictBlocks(task));
+  $('taskDynamic').replaceChildren(dateField(task), timeField(task), repeatField(task), copyField(task), ...conflictBlocks(task));
+  if (ui.sheet.confirmDelete) {
+    $('taskFoot').replaceChildren(deleteChoices(task));
+    return;
+  }
   $('taskFoot').replaceChildren(
     h(
       'button',
@@ -625,6 +667,11 @@ function renderTaskSheet(first) {
         class: 'text-btn danger',
         'data-k': 'delete',
         onclick: () => {
+          if (task.of) {
+            ui.sheet.confirmDelete = true;
+            renderSheet(false);
+            return;
+          }
           engine.remove(id);
           closeSheet();
           toast(t('deleted'), { label: t('undo'), run: () => engine.restore(id) });
@@ -639,19 +686,223 @@ function renderTaskSheet(first) {
         class: 'btn',
         'data-k': 'toggleDone',
         'aria-pressed': String(task.done),
-        onclick: () => engine.update(id, { done: !task.done }),
+        onclick: () => updateTask(id, { done: !task.done }),
       },
       t(task.done ? 'markIncomplete' : 'markComplete'),
     ),
   );
 }
 
+function deleteChoices(task) {
+  const id = task.id;
+  return h(
+    'div',
+    { class: 'delete-choices' },
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn danger-btn',
+        'data-k': 'deleteThis',
+        onclick: () => {
+          engine.remove(realId(id));
+          closeSheet();
+          toast(t('deleted'), { label: t('undo'), run: () => engine.restore(id) });
+        },
+      },
+      t('deleteThis'),
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn danger-btn',
+        'data-k': 'deleteFollowing',
+        onclick: () => {
+          const s = seriesOf(task);
+          engine.remove(realId(id));
+          if (s) endSeries(s, addDays(task.date, -1));
+          closeSheet();
+          toast(t('deletedSeries'));
+        },
+      },
+      t('deleteFollowing'),
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'text-btn quiet',
+        'data-k': 'deleteCancel',
+        onclick: () => {
+          ui.sheet.confirmDelete = false;
+          renderSheet(false);
+        },
+      },
+      t('cancel'),
+    ),
+  );
+}
+
+// Ends a series on `lastDay` (removing it if that is before it began) and
+// clears stored occurrences after that day that were not done yet.
+function endSeries(s, lastDay) {
+  if (lastDay < s.from) engine.remove(s.id);
+  else engine.update(s.id, { rep: { ...s.rule, until: lastDay } });
+  for (const x of engine.tasks()) if (x.of === s.id && x.date > lastDay && !x.done) engine.remove(x.id);
+}
+
+function setRepeat(task, rule) {
+  const s = seriesOf(task);
+  if (s) {
+    engine.update(s.id, { rep: { ...rule, until: null } });
+    return;
+  }
+  // A one-off task becomes the first occurrence of a new series.
+  const sid = engine.createSeries({ title: task.title, notes: task.notes, start: task.start, end: task.end, from: task.date, rule });
+  const occ = engine.materialize(sid, task.date);
+  if (task.done) engine.update(occ, { done: true });
+  if (!task.virtual) engine.remove(task.id);
+  ui.sheet.id = occ;
+}
+
+function repeatField(task) {
+  const s = seriesOf(task);
+  let rule = s ? s.rule : null;
+  if (rule && rule.until && rule.until <= task.date) rule = null;
+  const dow = keyToDate(task.date).getDay();
+  const mode = !rule ? 'none' : rule.freq === 'daily' ? 'daily' : rule.days.length === 1 && rule.days[0] === dow && !ui.sheet.pickDays ? 'weekly' : 'days';
+  const choose = (m) => {
+    if (m === 'none') {
+      ui.sheet.pickDays = false;
+      if (s) {
+        realId(task.id);
+        endSeries(s, task.date);
+      }
+      return;
+    }
+    if (m === 'daily') setRepeat(task, { freq: 'daily' });
+    if (m === 'weekly') setRepeat(task, { freq: 'days', days: [dow] });
+    if (m === 'days') setRepeat(task, { freq: 'days', days: rule && rule.freq === 'days' ? rule.days : [dow] });
+    ui.sheet.pickDays = m === 'days';
+    renderSheet(false);
+  };
+  const kids = [
+    h('span', { class: 'field-label' }, t('repeatLabel')),
+    h(
+      'div',
+      { class: 'chips' },
+      [
+        ['none', t('repeatNone')],
+        ['daily', t('repeatDaily')],
+        ['weekly', t('repeatWeekly')],
+        ['days', t('repeatDays')],
+      ].map(([m, label]) => h('button', { type: 'button', class: 'chip', 'data-k': 'rep-' + m, 'aria-pressed': String(mode === m), onclick: () => choose(m) }, label)),
+    ),
+  ];
+  if (mode === 'days') {
+    const days = weekDays(task.date, firstDayOfWeek(ui.lang, navigator.language));
+    kids.push(
+      h(
+        'div',
+        { class: 'chips weekday-chips' },
+        days.map((key) => {
+          const d = keyToDate(key).getDay();
+          const on = rule.days.includes(d);
+          return h(
+            'button',
+            {
+              type: 'button',
+              class: 'chip',
+              'data-k': 'repday-' + d,
+              'aria-pressed': String(on),
+              'aria-label': weekdayName(key, ui.lang),
+              onclick: () => {
+                const next = on ? rule.days.filter((x) => x !== d) : [...rule.days, d].sort();
+                if (next.length) engine.update(s.id, { rep: { ...rule, days: next, until: null } });
+              },
+            },
+            weekdayName(key, ui.lang, 'short'),
+          );
+        }),
+      ),
+    );
+  }
+  if (s && rule && (task.title !== s.title || task.start !== s.start || task.end !== s.end)) {
+    kids.push(
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chip',
+          'data-k': 'applyAll',
+          onclick: () => {
+            const patch = { title: task.title, when: { s: task.start, e: task.end } };
+            engine.update(s.id, patch);
+            for (const x of engine.tasks()) if (x.of === s.id && x.date > task.date && !x.done) engine.update(x.id, patch);
+            toast(t('appliedToAll'));
+          },
+        },
+        t('applyToAll'),
+      ),
+    );
+  }
+  return h('div', { class: 'field' }, kids);
+}
+
+function copyTo(task, date) {
+  engine.create({ title: task.title, notes: task.notes, date, start: task.start, end: task.end });
+  toast(t('copiedTo', { day: shortDay(date) }), {
+    label: t('show'),
+    run: () => {
+      closeSheet();
+      goTo(date);
+    },
+  });
+}
+
+function copyField(task) {
+  const kids = [
+    h('span', { class: 'field-label' }, t('copyLabel')),
+    h(
+      'div',
+      { class: 'chips' },
+      h('button', { type: 'button', class: 'chip', 'data-k': 'copyNext', onclick: () => copyTo(task, addDays(task.date, 1)) }, t('copyNextDay')),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chip',
+          'data-k': 'copyOther',
+          'aria-expanded': String(ui.picker === 'copy'),
+          onclick: () => {
+            ui.picker = ui.picker === 'copy' ? null : 'copy';
+            ui.pickerMonth = task.date.slice(0, 7);
+            renderSheet(false);
+          },
+        },
+        t('copyOther'),
+      ),
+    ),
+  ];
+  if (ui.picker === 'copy') {
+    kids.push(
+      monthView(task.date, ui.pickerMonth, (key) => {
+        ui.picker = null;
+        copyTo(task, key);
+        renderSheet(false);
+      }),
+    );
+  }
+  return h('div', { class: 'field' }, kids);
+}
+
 function moveTask(task, date) {
   if (date === task.date) return;
   const from = task.date;
-  engine.update(task.id, { when: { date } });
+  updateTask(task.id, { when: { date } });
   if (from === ui.day || date !== ui.day) {
-    toast(t('movedTo', { day: shortDay(date) }), { label: t('undo'), run: () => engine.update(task.id, { when: { date: from } }) });
+    toast(t('movedTo', { day: shortDay(date) }), { label: t('undo'), run: () => updateTask(task.id, { when: { date: from } }) });
   }
 }
 
@@ -704,9 +955,9 @@ function dateField(task) {
 function setTime(task, which, value) {
   if (which === 'start') {
     const dur = task.start && task.end ? durationMinutes(task.start, task.end) : null;
-    engine.update(task.id, { when: { s: value, e: dur ? addMinutes(value, dur) : task.end } });
+    updateTask(task.id, { when: { s: value, e: dur ? addMinutes(value, dur) : task.end } });
   } else {
-    engine.update(task.id, { when: { e: value } });
+    updateTask(task.id, { when: { e: value } });
   }
 }
 
@@ -725,7 +976,7 @@ function timeField(task) {
             'data-k': 'addTime',
             onclick: () => {
               const s = task.date === todayKey() ? nextQuarter() : '09:00';
-              engine.update(task.id, { when: { s, e: null } });
+              updateTask(task.id, { when: { s, e: null } });
               ui.picker = 'start';
             },
           },
@@ -769,7 +1020,7 @@ function timeField(task) {
           'data-k': 'noTime',
           onclick: () => {
             ui.picker = null;
-            engine.update(task.id, { when: { s: null, e: null } });
+            updateTask(task.id, { when: { s: null, e: null } });
           },
         },
         t('removeTime'),
@@ -793,7 +1044,7 @@ function timeField(task) {
             class: 'chip tnum',
             'data-k': 'dur-' + m,
             'aria-pressed': String(dur === m),
-            onclick: () => engine.update(task.id, { when: { e: addMinutes(task.start, m) } }),
+            onclick: () => updateTask(task.id, { when: { e: addMinutes(task.start, m) } }),
           },
           h('bdi', null, formatDuration(m, ui.lang)),
         ),
@@ -811,7 +1062,7 @@ function timeField(task) {
             class: 'chip tnum',
             'data-k': 'shift-' + m,
             onclick: () =>
-              engine.update(task.id, { when: { s: addMinutes(task.start, m), e: task.end ? addMinutes(task.end, m) : null } }),
+              updateTask(task.id, { when: { s: addMinutes(task.start, m), e: task.end ? addMinutes(task.end, m) : null } }),
           },
           t(m < 0 ? 'earlier' : 'later', { d: formatDuration(Math.abs(m), ui.lang) }),
         ),
@@ -988,9 +1239,9 @@ function carrySheet() {
   const today = todayKey();
   const moveAll = () => {
     const moved = list.map((x) => [x.id, x.date]);
-    for (const [id] of moved) engine.update(id, { when: { date: today } });
+    for (const [id] of moved) updateTask(id, { when: { date: today } });
     closeSheet();
-    toast(t('movedMany'), { label: t('undo'), run: () => moved.forEach(([id, d]) => engine.update(id, { when: { date: d } })) });
+    toast(t('movedMany'), { label: t('undo'), run: () => moved.forEach(([id, d]) => updateTask(id, { when: { date: d } })) });
   };
   return [
     sheetHead(t('carryTitle')),
@@ -1010,7 +1261,7 @@ function carrySheet() {
           ),
           h(
             'button',
-            { type: 'button', class: 'chip', 'data-k': 'carry-' + x.id, onclick: () => engine.update(x.id, { when: { date: today } }) },
+            { type: 'button', class: 'chip', 'data-k': 'carry-' + x.id, onclick: () => updateTask(x.id, { when: { date: today } }) },
             t('toToday'),
           ),
         ),
@@ -1826,7 +2077,7 @@ function setupEvents() {
 function saveOpenEdits() {
   flushTitle();
   const notes = $('taskNotes');
-  if (notes && ui.sheet && ui.sheet.kind === 'task' && engine) engine.update(ui.sheet.id, { notes: normalizeDigits(notes.value) });
+  if (notes && ui.sheet && ui.sheet.kind === 'task' && engine) updateTask(ui.sheet.id, { notes: normalizeDigits(notes.value) });
   if (engine) engine.flush();
 }
 

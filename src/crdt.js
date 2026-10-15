@@ -10,7 +10,7 @@
 // The merge is commutative, associative and idempotent, so every device
 // converges to the same state whatever order updates arrive in.
 
-export const FIELDS = ['title', 'notes', 'when', 'done', 'del'];
+export const FIELDS = ['title', 'notes', 'when', 'done', 'del', 'rep', 'of'];
 const CONFLICT_FIELDS = new Set(['title', 'notes', 'when']);
 const HISTORY = 12;
 
@@ -154,7 +154,7 @@ export function dismissConflicts(task, keys) {
 // that edit being lost.
 export function deletionMarker(task) {
   const k = {};
-  for (const f of ['title', 'notes', 'when', 'done']) {
+  for (const f of ['title', 'notes', 'when', 'done', 'rep']) {
     if (task.r[f]) k[f] = stampKey(task.r[f]);
   }
   return { on: true, k };
@@ -163,7 +163,7 @@ export function deletionMarker(task) {
 export function isDeleted(task) {
   const del = task.r.del && task.r.del.v;
   if (!del || !del.on) return false;
-  for (const f of ['title', 'notes', 'when', 'done']) {
+  for (const f of ['title', 'notes', 'when', 'done', 'rep']) {
     const reg = task.r[f];
     if (!reg) continue;
     if (del.k[f] !== stampKey(reg)) return false;

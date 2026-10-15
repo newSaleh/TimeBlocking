@@ -315,3 +315,43 @@ test('github: a bad token is reported, not retried forever as "offline"', async 
   assert.equal(engine.status().state, 'auth');
   engine.stop();
 });
+
+// --- Repeating tasks -------------------------------------------------------------
+
+import { occursOn, occurrenceId, parseOccurrenceId } from '../src/sync.js';
+
+test('repeat rules: daily, specific weekdays, until', () => {
+  const s = { from: '2026-10-15', rule: { freq: 'days', days: [0, 1, 2, 3, 4] } }; // Sun..Thu
+  assert.equal(occursOn(s, '2026-10-15'), true); // Thursday
+  assert.equal(occursOn(s, '2026-10-16'), false); // Friday
+  assert.equal(occursOn(s, '2026-10-18'), true); // Sunday
+  assert.equal(occursOn(s, '2026-10-14'), false); // before start
+  const d = { from: '2026-10-15', rule: { freq: 'daily', until: '2026-10-20' } };
+  assert.equal(occursOn(d, '2026-10-20'), true);
+  assert.equal(occursOn(d, '2026-10-21'), false);
+  assert.deepEqual(parseOccurrenceId(occurrenceId('abc123', '2026-10-15')), { series: 'abc123', date: '2026-10-15' });
+  assert.equal(parseOccurrenceId('plainid'), null);
+});
+
+test('series are hidden templates; touching an occurrence stores it once, even from two devices', async () => {
+  const { devices: [phone, laptop] } = await setup();
+  const sid = phone.engine.createSeries({ title: 'تمارين الصباح', start: '09:00', end: '09:30', from: '2026-10-15', rule: { freq: 'daily' } });
+  await settle([phone.engine, laptop.engine]);
+  assert.equal(laptop.engine.tasks().length, 0, 'template is not a task');
+  assert.equal(laptop.engine.series()[0].title, 'تمارين الصباح');
+  phone.conn.setOnline(false);
+  laptop.conn.setOnline(false);
+  const a = phone.engine.materialize(sid, '2026-10-16');
+  phone.engine.update(a, { done: true });
+  const b = laptop.engine.materialize(sid, '2026-10-16');
+  laptop.engine.update(b, { when: { s: '10:00', e: '10:30' } });
+  assert.equal(a, b);
+  phone.conn.setOnline(true);
+  laptop.conn.setOnline(true);
+  phone.engine.flush();
+  laptop.engine.flush();
+  await settle([phone.engine, laptop.engine]);
+  const list = phone.engine.tasks();
+  assert.equal(list.length, 1, 'one occurrence, not two');
+  assert.deepEqual([list[0].done, list[0].start, list[0].of], [true, '10:00', sid]);
+});
