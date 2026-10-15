@@ -1631,6 +1631,8 @@ function setTheme(code) {
 
 // --- Import from Reminders ------------------------------------------------------
 
+const SHORTCUT_URL = 'https://newsaleh.github.io/TimeBlocking/shortcut/Pocket%20Time.shortcut';
+
 function openImport(text) {
   if (ui.sheet) closeSheet();
   const hour = new Date().getHours();
@@ -1641,11 +1643,13 @@ function importItems() {
   const s = ui.sheet;
   const items = parseImportLines(s.text, todayKey());
   const existing = new Set(engine ? engine.tasks().map((x) => `${x.date}|${x.title.trim()}`) : []);
+  // Text from the Shortcut has dates: then only the chosen day is pre-selected.
+  const dated = items.some((it) => it.date);
   return items.map((it, i) => {
     const date = it.date || s.target;
     const dup = existing.has(`${date}|${it.title.trim()}`);
     const key = `${i}|${it.title}`;
-    const auto = !dup && (!it.date || it.date === s.target);
+    const auto = !dup && (it.date ? it.date === s.target : !dated);
     return { ...it, date, dup, key, on: key in s.picks ? s.picks[key] : auto };
   });
 }
@@ -1690,6 +1694,13 @@ function renderImportSheet(first) {
       sheetHead(t('importTitle')),
       h('div', { class: 'field' }, h('p', { class: 'prose' }, t('importHint')), area, tools.length ? h('div', { class: 'chips' }, tools) : null),
       h('div', { id: 'importDynamic' }),
+      h(
+        'div',
+        { class: 'field' },
+        h('span', { class: 'field-label' }, t('shortcutTitle')),
+        h('p', { class: 'prose' }, t('shortcutHint')),
+        h('a', { class: 'btn', href: SHORTCUT_URL, 'data-k': 'getShortcut', target: '_blank', rel: 'noopener' }, t('shortcutGet')),
+      ),
       h(
         'details',
         { class: 'field how' },

@@ -1,0 +1,53 @@
+/*
+Pocket Time: copy upcoming reminders as import lines.
+Each line: "yyyy-MM-dd HH:mm Title". Paste them in Pocket Time › ⋯ › Import tasks.
+Nothing is sent anywhere: the text only goes to the clipboard.
+*/
+
+#define name Pocket Time
+#define color blue
+#define glyph calendar
+
+#include 'actions/calendar'
+#include 'actions/sharing'
+
+const reminders = rawAction("is.workflow.actions.filter.reminders", {
+    "WFContentItemFilter": {
+        "Value": {
+            "WFActionParameterFilterPrefix": 1,
+            "WFContentPredicateBoundedDate": false,
+            "WFActionParameterFilterTemplates": [
+                {
+                    "Operator": 4,
+                    "Property": "Is Completed",
+                    "Removable": true,
+                    "Values": {
+                        "Bool": false
+                    }
+                },
+                {
+                    "Operator": 100,
+                    "Property": "Due Date",
+                    "Removable": true,
+                    "Values": {}
+                }
+            ]
+        },
+        "WFSerializationType": "WFContentPredicateTableTemplate"
+    },
+    "WFContentItemSortProperty": "Due Date",
+    "WFContentItemSortOrder": "Oldest First",
+    "WFContentItemLimitEnabled": true,
+    "WFContentItemLimitNumber": 200
+})
+
+// One reminder per line (the text starts with an empty line, which is ignored).
+@lines
+for item in reminders {
+    const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
+    @lines += "
+{due} {item['Title']}"
+}
+
+setClipboard(lines)
+alert("نُسخت مهامك. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
