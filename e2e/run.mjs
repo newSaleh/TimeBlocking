@@ -416,20 +416,26 @@ await step('Import from Reminders: paste, tomorrow pre-selected, no duplicates',
   await P.fill('#importText', lines);
   await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
   const checked = await P.evaluate(() => [...document.querySelectorAll('.import-item input')].map((x) => x.checked));
-  // "شراء هدية" was moved to tomorrow earlier, so it is marked as already there.
-  assert(JSON.stringify(checked) === JSON.stringify([true, true, false, false]), 'selection ' + JSON.stringify(checked));
-  assert((await P.textContent('#sheet .import-item:nth-child(3) .tag')) === 'موجودة', 'duplicate marked');
+  // "شراء هدية" was moved to tomorrow earlier, so it is left out.
+  assert(JSON.stringify(checked) === JSON.stringify([true, true, false]), 'selection ' + JSON.stringify(checked));
+  assert((await P.textContent('#sheet [data-k="importSkipped"]')).includes('مهمة واحدة'), 'skipped note');
   await P.waitForTimeout(200);
   await P.screenshot({ path: `${shots}/import-iphone.png` });
   await P.click('#sheet [data-k="importAdd"]');
   await row(P, 'تمارين الصباح').waitFor();
   assert((await row(P, 'حلاق (Oct/15)').locator('.task-time .start').textContent()) === '15:00', 'time kept');
+  assert((await titles(P)).filter((x) => x === 'شراء هدية').length === 1, 'no duplicate');
+  // Delete one imported task, then import the same text again: nothing comes back.
+  await openTask(P, 'حلاق (Oct/15)');
+  await P.click('#sheet [data-k="delete"]');
+  await poll(async () => (await row(P, 'حلاق (Oct/15)').count()) === 0, 'deleted');
   await P.click('#settingsBtn');
   await P.click('#sheet [data-k="openImport"]');
   await P.fill('#importText', lines);
   await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
-  const again = await P.evaluate(() => [...document.querySelectorAll('.import-item')].map((x) => [x.querySelector('input').checked, !!x.querySelector('.tag')]));
-  assert(again[0][0] === false && again[0][1] === true, 'existing task not selected again');
+  const left = await P.evaluate(() => [...document.querySelectorAll('.import-item .task-title')].map((x) => x.textContent));
+  assert(JSON.stringify(left) === JSON.stringify(['مهمة بعيدة']), 'only the far-away task remains: ' + JSON.stringify(left));
+  assert((await P.textContent('#sheet [data-k="importSkipped"]')).includes('3'), 'three skipped');
   await closeSheet(P);
   await P.click('#todayBtn');
 });

@@ -35,12 +35,6 @@ const reminders = rawAction("is.workflow.actions.filter.reminders", {
                     "Values": {
                         "Bool": false
                     }
-                },
-                {
-                    "Operator": 100,
-                    "Property": "Due Date",
-                    "Removable": true,
-                    "Values": {}
                 }
             ]
         },
@@ -48,37 +42,55 @@ const reminders = rawAction("is.workflow.actions.filter.reminders", {
     },
     "WFContentItemSortProperty": "Due Date",
     "WFContentItemSortOrder": "Oldest First",
-    "WFContentItemLimitEnabled": true,
-    "WFContentItemLimitNumber": 500
+    "WFContentItemLimitEnabled": false,
+    "WFContentItemLimitNumber": 1000
 })
+
+const total = count(reminders)
+@dayCount = 0
+@copied = 0
+@seenLists = ""
 
 // One reminder per line (the text starts with an empty line, which is ignored).
 @lines
 for item in reminders {
-    const dueDay = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd")
-    if dueDay == day {
-        @listName = "{item['List']}"
-        @fromMyLists = 0
-        if listName contains "Reminders" {
-            @fromMyLists = 1
-        }
-        if listName contains "REPETITIVE" {
-            @fromMyLists = 1
-        }
-        if listName contains "مكرر" {
-            @fromMyLists = 1
-        }
-        if fromMyLists == 1 {
-            const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
-            @lines += "
+    @dueText = "{item['Due Date']}"
+    if dueText {
+        const dueDay = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd")
+        if dueDay == day {
+            @dayCount = dayCount + 1
+            @listName = "{item['List']}"
+            @fromMyLists = 0
+            if listName contains "Reminders" {
+                @fromMyLists = 1
+            }
+            if listName contains "REPETITIVE" {
+                @fromMyLists = 1
+            }
+            if listName contains "مكرر" {
+                @fromMyLists = 1
+            }
+            if fromMyLists == 1 {
+                @copied = copied + 1
+                const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
+                @lines += "
 {due} {item['Title']}"
+            } else {
+                @seenLists += " [{listName}]"
+            }
         }
     }
 }
 
-if lines {
+if copied > 0 {
     setClipboard(lines)
-    alert("نُسخت مهامك. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
+    alert("نُسخت {copied} مهمة. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
 } else {
-    alert("لا توجد مهام غير منجزة في هذا اليوم.", "Pocket Time")
+    alert("لم أجد مهام للنسخ.
+التذكيرات غير المنجزة: {total}
+المستحقة يوم {day}: {dayCount}
+من قائمتي Reminders و REPETITIVE: {copied}
+قوائم أخرى لهذا اليوم:{seenLists}
+
+صوّر هذه الرسالة وأرسلها لي.", "Pocket Time")
 }

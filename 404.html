@@ -2619,7 +2619,7 @@ const AR = {
   importHint: 'الصق المهام هنا، مهمة في كل سطر. الوقت والتاريخ في السطر يُقرآن تلقائيًا.',
   importPaste: 'لصق',
   importFor: 'لأي يوم؟',
-  importExists: 'موجودة',
+  importSkipped: { one: 'مهمة واحدة سبقت إضافتها، فلن تُضاف مرة أخرى.', two: 'مهمتان سبقت إضافتهما، فلن تُضافا مرة أخرى.', few: '{n} مهام سبقت إضافتها، فلن تُضاف مرة أخرى.', many: '{n} مهمة سبقت إضافتها، فلن تُضاف مرة أخرى.', other: '{n} مهمة سبقت إضافتها، فلن تُضاف مرة أخرى.' },
   importAdd: { zero: 'لا شيء للإضافة', one: 'إضافة مهمة واحدة', two: 'إضافة مهمتين', few: 'إضافة {n} مهام', many: 'إضافة {n} مهمة', other: 'إضافة {n} مهمة' },
   imported: { zero: 'لم يُضف شيء', one: 'أُضيفت مهمة واحدة', two: 'أُضيفت مهمتان', few: 'أُضيفت {n} مهام', many: 'أُضيفت {n} مهمة', other: 'أُضيفت {n} مهمة' },
   shortcutTitle: 'اختصار جاهز',
@@ -2790,7 +2790,7 @@ const EN = {
   importHint: 'Paste your tasks here, one per line. Dates and times in a line are picked up automatically.',
   importPaste: 'Paste',
   importFor: 'For which day?',
-  importExists: 'Already there',
+  importSkipped: { one: '1 task was added before and will not be added again.', other: '{n} tasks were added before and will not be added again.' },
   importAdd: { one: 'Add 1 task', other: 'Add {n} tasks' },
   imported: { one: '1 task added', other: '{n} tasks added' },
   shortcutTitle: 'Ready-made Shortcut',
@@ -4570,19 +4570,57 @@ function followPastedDate(s) {
   if (dates.size === 1) s.target = [...dates][0];
 }
 
+// Tasks imported before are remembered on this device, so importing the
+// same day again never brings them back, even after they were deleted here.
+const importKey = (date, title) => `${date}|${normalizeDigits(title).replace(/\s+/g, ' ').trim().toLowerCase()}`;
+
+function importedBefore() {
+  try {
+    return new Set(JSON.parse(prefs.get('imported') || '[]'));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function rememberImported(keys) {
+  const all = [...importedBefore(), ...keys];
+  prefs.set('imported', JSON.stringify(all.slice(-2000)));
+}
+
+// Returns the lines worth importing plus how many were left out because the
+// task is already in Pocket Time (repeating ones included) or was imported before.
 function importItems() {
   const s = ui.sheet;
   const items = parseImportLines(s.text, todayKey());
-  const existing = new Set(engine ? engine.tasks().map((x) => `${x.date}|${x.title.trim()}`) : []);
+  const before = importedBefore();
+  const known = new Map();
+  const isKnown = (date, title) => {
+    if (!known.has(date)) {
+      const { scheduled, anytime } = dayTasks(date);
+      known.set(date, new Set([...scheduled, ...anytime].map((x) => importKey(date, x.title))));
+    }
+    const key = importKey(date, title);
+    return known.get(date).has(key) || before.has(key);
+  };
   // Text from the Shortcut has dates: then only the chosen day is pre-selected.
   const dated = items.some((it) => it.date);
-  return items.map((it, i) => {
+  const seen = new Set();
+  const out = [];
+  let skipped = 0;
+  items.forEach((it, i) => {
     const date = it.date || s.target;
-    const dup = existing.has(`${date}|${it.title.trim()}`);
+    const id = importKey(date, it.title);
+    if (seen.has(id) || isKnown(date, it.title)) {
+      skipped++;
+      return;
+    }
+    seen.add(id);
     const key = `${i}|${it.title}`;
-    const auto = !dup && (it.date ? it.date === s.target : !dated);
-    return { ...it, date, dup, key, on: key in s.picks ? s.picks[key] : auto };
+    const auto = it.date ? it.date === s.target : !dated;
+    out.push({ ...it, date, id, key, on: key in s.picks ? s.picks[key] : auto });
   });
+  out.skipped = skipped;
+  return out;
 }
 
 function renderImportSheet(first) {
@@ -4692,7 +4730,6 @@ function refreshImport() {
           shortDay(it.date),
           it.start ? ' · ' : '',
           it.start ? timeEl(rangeText(it.start, it.end)) : null,
-          it.dup ? h('span', { class: 'tag' }, t('importExists')) : null,
         ),
       ),
     );
@@ -4701,6 +4738,7 @@ function refreshImport() {
   add.addEventListener('click', () => {
     if (!engine) return;
     for (const it of chosen) engine.create({ title: it.title, date: it.date, start: it.start, end: it.end });
+    rememberImported(chosen.map((it) => it.id));
     const target = s.target;
     closeSheet();
     goTo(target);
@@ -4709,6 +4747,7 @@ function refreshImport() {
   box.replaceChildren(
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, t('importFor')), h('div', { class: 'chips' }, targetChips)),
     items.length ? h('div', { class: 'field' }, list) : null,
+    items.skipped ? h('p', { class: 'note', 'data-k': 'importSkipped' }, t('importSkipped', { n: items.skipped })) : null,
     h('div', { class: 'sheet-foot' }, add),
   );
 }
