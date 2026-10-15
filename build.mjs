@@ -2,8 +2,8 @@
 // No dependencies: modules are concatenated in dependency order with their
 // import/export syntax removed, inside one strict-mode function scope.
 //
-//   site/                  the installable web app for GitHub Pages
-//                          (index.html, service worker, manifest, icons)
+//   site/ and repo root    the installable web app (index.html, service
+//                          worker, manifest, icons); Pages serves the root
 //   dist/pocket-time.html  page body for publishing as a Claude Artifact
 //   dist/standalone.html   the same page as a plain HTML document (tests)
 
@@ -88,4 +88,7 @@ writeFileSync('site/manifest.webmanifest', JSON.stringify(manifest, null, 2));
 writeFileSync('site/sw.js', sw);
 writeFileSync('site/.nojekyll', '');
 for (const f of icons) copyFileSync(`assets/${f}`, `site/${f}`);
+
+// GitHub Pages serves the repository root of main: publish the app there.
+for (const f of ['index.html', '404.html', 'manifest.webmanifest', 'sw.js', '.nojekyll', ...icons]) copyFileSync(`site/${f}`, f);
 console.log(`site/index.html  ${(index.length / 1024).toFixed(1)} KB  (version ${version})`);
