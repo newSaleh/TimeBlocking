@@ -434,6 +434,21 @@ await step('Import from Reminders: paste, tomorrow pre-selected, no duplicates',
   await P.click('#todayBtn');
 });
 
+await step('Pasted Shortcut text picks its own day (today here)', async () => {
+  const today = await P.evaluate(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  await P.click('#settingsBtn');
+  await P.click('#sheet [data-k="openImport"]');
+  await P.fill('#importText', `\n${today} 08:00 مهمة من الاختصار\n${today} 21:30 مهمة أخرى`);
+  await P.waitForSelector(`#sheet [data-k="importFor-${today}"][aria-pressed="true"]`);
+  const checked = await P.evaluate(() => [...document.querySelectorAll('.import-item input')].map((x) => x.checked));
+  assert(JSON.stringify(checked) === '[true,true]', 'both selected ' + JSON.stringify(checked));
+  assert(await P.isVisible('#sheet [data-k="getShortcut"]'), 'shortcut button');
+  await closeSheet(P);
+});
+
 await step('Shortcut link (#import=...) opens the import screen filled in', async () => {
   await P.evaluate(() => (location.hash = 'import=' + encodeURIComponent('10:00 من الاختصار')));
   await P.waitForSelector('#importText');

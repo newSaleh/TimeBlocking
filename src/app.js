@@ -1636,7 +1636,15 @@ const SHORTCUT_URL = 'https://newsaleh.github.io/TimeBlocking/shortcut/Pocket%20
 function openImport(text) {
   if (ui.sheet) closeSheet();
   const hour = new Date().getHours();
-  openSheet('import', { text, target: addDays(todayKey(), hour >= 15 ? 1 : 0), picks: {} });
+  const sheet = { text, target: addDays(todayKey(), hour >= 15 ? 1 : 0), picks: {} };
+  followPastedDate(sheet);
+  openSheet('import', sheet);
+}
+
+// Text from the Shortcut carries one date (today or tomorrow): use it.
+function followPastedDate(s) {
+  const dates = new Set(parseImportLines(s.text, todayKey()).map((it) => it.date).filter(Boolean));
+  if (dates.size === 1) s.target = [...dates][0];
 }
 
 function importItems() {
@@ -1663,6 +1671,7 @@ function renderImportSheet(first) {
     area.addEventListener('input', () => {
       s.text = area.value;
       s.picks = {};
+      followPastedDate(s);
       refreshImport();
     });
     const tools = [];

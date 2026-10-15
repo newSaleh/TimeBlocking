@@ -1,7 +1,9 @@
 /*
-Pocket Time: copy upcoming reminders as import lines.
-Each line: "yyyy-MM-dd HH:mm Title". Paste them in Pocket Time › ⋯ › Import tasks.
-Nothing is sent anywhere: the text only goes to the clipboard.
+Pocket Time: copy today's or tomorrow's reminders as import lines.
+Asks which day, keeps reminders from the lists "Reminders" and
+"REPETITIVE مكرر" that are not completed and are due that day, and copies
+one line per reminder ("yyyy-MM-dd HH:mm Title") to the clipboard.
+Nothing is sent anywhere. Paste in Pocket Time › ⋯ › Import tasks.
 */
 
 #define name Pocket Time
@@ -10,6 +12,15 @@ Nothing is sent anywhere: the text only goes to the clipboard.
 
 #include 'actions/calendar'
 #include 'actions/sharing'
+
+@day
+menu "مهام أي يوم؟" {
+    item "غدًا":
+        const tomorrow = adjustDate("{CurrentDate}", "Add", 1, "days")
+        @day = formatDate(tomorrow, "Custom", "yyyy-MM-dd")
+    item "اليوم":
+        @day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
+}
 
 const reminders = rawAction("is.workflow.actions.filter.reminders", {
     "WFContentItemFilter": {
@@ -38,16 +49,36 @@ const reminders = rawAction("is.workflow.actions.filter.reminders", {
     "WFContentItemSortProperty": "Due Date",
     "WFContentItemSortOrder": "Oldest First",
     "WFContentItemLimitEnabled": true,
-    "WFContentItemLimitNumber": 200
+    "WFContentItemLimitNumber": 500
 })
 
 // One reminder per line (the text starts with an empty line, which is ignored).
 @lines
 for item in reminders {
-    const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
-    @lines += "
+    const dueDay = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd")
+    if dueDay == day {
+        @listName = "{item['List']}"
+        @fromMyLists = 0
+        if listName contains "Reminders" {
+            @fromMyLists = 1
+        }
+        if listName contains "REPETITIVE" {
+            @fromMyLists = 1
+        }
+        if listName contains "مكرر" {
+            @fromMyLists = 1
+        }
+        if fromMyLists == 1 {
+            const due = formatDate(item['Due Date'], "Custom", "yyyy-MM-dd HH:mm")
+            @lines += "
 {due} {item['Title']}"
+        }
+    }
 }
 
-setClipboard(lines)
-alert("نُسخت مهامك. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
+if lines {
+    setClipboard(lines)
+    alert("نُسخت مهامك. افتح Pocket Time ثم ⋯ ثم استيراد مهام ثم لصق.", "Pocket Time")
+} else {
+    alert("لا توجد مهام غير منجزة في هذا اليوم.", "Pocket Time")
+}
