@@ -1,4 +1,4 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#16191e" media="(prefers-color-scheme: dark)"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pocket Time"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" href="icon-192.png"></head><body><title>Pocket Time</title>
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#16191e" media="(prefers-color-scheme: dark)"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pocket Time"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" href="icon-192.png"></head><body><title>Pocket Time</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="A private, end-to-end encrypted pocket notebook for time blocking.">
 <style>
@@ -17,6 +17,11 @@
   --tag-bg: #f2ecdc;
   --tag-fg: #6d5a1e;
   --scrim: rgba(18, 22, 30, 0.32);
+  --surface: #f2f4f7;
+  --sheet: #ffffff;
+  --sel-bg: #15181d;
+  --sel-fg: #ffffff;
+  --danger: #c2372d;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Arabic', 'Segoe UI', 'Noto Sans Arabic',
     'Noto Sans', Tahoma, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -26,34 +31,44 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0e1013;
-    --page: #16191e;
-    --fg: #e9ebef;
-    --muted: #979eac;
-    --faint: #697080;
-    --line: #262a31;
-    --accent: #86a4ff;
-    --accent-fg: #0e1013;
-    --accent-soft: #1d2638;
-    --tag-bg: #2c2717;
-    --tag-fg: #d9c58a;
-    --scrim: rgba(0, 0, 0, 0.55);
+    --bg: #000000;
+    --page: #000000;
+    --fg: #f2f2f5;
+    --muted: #a1a1aa;
+    --faint: #6c6c74;
+    --line: #232327;
+    --accent: #7ea6ff;
+    --accent-fg: #06080d;
+    --accent-soft: #14203a;
+    --tag-bg: #2d2714;
+    --tag-fg: #e6cc80;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --surface: #1d1d20;
+    --sheet: #121214;
+    --sel-bg: #7ea6ff;
+    --sel-fg: #06080d;
+    --danger: #ff6b63;
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --bg: #0e1013;
-  --page: #16191e;
-  --fg: #e9ebef;
-  --muted: #979eac;
-  --faint: #697080;
-  --line: #262a31;
-  --accent: #86a4ff;
-  --accent-fg: #0e1013;
-  --accent-soft: #1d2638;
-  --tag-bg: #2c2717;
-  --tag-fg: #d9c58a;
-  --scrim: rgba(0, 0, 0, 0.55);
+  --bg: #000000;
+  --page: #000000;
+  --fg: #f2f2f5;
+  --muted: #a1a1aa;
+  --faint: #6c6c74;
+  --line: #232327;
+  --accent: #7ea6ff;
+  --accent-fg: #06080d;
+  --accent-soft: #14203a;
+  --tag-bg: #2d2714;
+  --tag-fg: #e6cc80;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --surface: #1d1d20;
+  --sheet: #121214;
+  --sel-bg: #7ea6ff;
+  --sel-fg: #06080d;
+  --danger: #ff6b63;
   color-scheme: dark;
 }
 
@@ -244,8 +259,8 @@ bdi.time {
   color: var(--accent);
 }
 .week-day[aria-current='date'] .week-num {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .week-day.has-tasks::after {
   content: '';
@@ -272,7 +287,8 @@ bdi.time {
   -webkit-overflow-scrolling: touch;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 4px 16px;
+  /* Room below the last task: a tap there starts a new one. */
+  padding-block: 4px 96px;
 }
 .section-label {
   font-size: 12px;
@@ -434,7 +450,7 @@ bdi.time {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   color: var(--muted);
   font-size: 14px;
   text-align: start;
@@ -495,7 +511,7 @@ bdi.time {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg);
+  background: var(--surface);
   border-radius: 24px;
   padding-inline: 16px 4px;
   border: 1px solid transparent;
@@ -555,7 +571,7 @@ bdi.time {
   max-height: 90%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--page);
+  background: var(--sheet);
   border-radius: 18px 18px 0 0;
   padding-top: 8px;
   padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
@@ -597,7 +613,7 @@ bdi.time {
   min-height: var(--tap);
   position: sticky;
   top: -8px;
-  background: var(--page);
+  background: var(--sheet);
   z-index: 1;
 }
 .sheet-head h2 {
@@ -614,6 +630,16 @@ bdi.time {
 .text-btn.quiet {
   color: var(--muted);
   font-weight: 400;
+}
+.text-btn.danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+/* Separates the hour grid from the minute grid. */
+.picker-divider {
+  height: 1px;
+  background: var(--line);
+  margin-block: 4px;
 }
 .field {
   display: flex;
@@ -656,7 +682,7 @@ bdi.time {
   height: 48px;
   padding-inline: 14px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 17px;
 }
 .chips {
@@ -668,15 +694,15 @@ bdi.time {
   min-height: 36px;
   padding-inline: 12px;
   border-radius: 18px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 15px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .chip[aria-pressed='true'] {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .time-row {
   display: flex;
@@ -688,7 +714,7 @@ bdi.time {
   min-width: 84px;
   height: 44px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 20px;
   font-weight: 600;
   display: inline-flex;
@@ -715,7 +741,7 @@ bdi.time {
   gap: 8px;
   padding: 10px;
   border-radius: 14px;
-  background: var(--bg);
+  background: var(--surface);
 }
 .grid {
   display: grid;
@@ -726,7 +752,7 @@ bdi.time {
   height: 40px;
   border-radius: 10px;
   font-size: 16px;
-  background: var(--page);
+  background: var(--sheet);
 }
 .grid button[aria-pressed='true'] {
   background: var(--accent);
@@ -769,8 +795,8 @@ bdi.time {
   font-weight: 700;
 }
 .month button[aria-pressed='true'] {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .note {
   font-size: 13px;
@@ -791,7 +817,7 @@ bdi.time {
   min-height: 48px;
   padding-inline: 18px;
   border-radius: 14px;
-  background: var(--bg);
+  background: var(--surface);
   font-weight: 600;
   font-size: 16px;
 }
@@ -822,7 +848,7 @@ bdi.time {
   overflow-wrap: anywhere;
 }
 .conflict .chips .chip {
-  background: var(--page);
+  background: var(--sheet);
   color: var(--fg);
 }
 .carry-item {
@@ -846,7 +872,7 @@ bdi.time {
 }
 .seg {
   display: inline-flex;
-  background: var(--bg);
+  background: var(--surface);
   border-radius: 12px;
   padding: 3px;
 }
@@ -857,7 +883,7 @@ bdi.time {
   font-size: 15px;
 }
 .seg button[aria-pressed='true'] {
-  background: var(--page);
+  background: var(--sheet);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
@@ -950,7 +976,7 @@ bdi.time {
   text-align: center;
   padding: 14px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   user-select: all;
   -webkit-user-select: all;
   word-break: break-all;
@@ -1008,6 +1034,25 @@ a.btn {
   padding-block: 10px;
   font-size: 15px;
   word-break: break-all;
+}
+
+/* ---------- Import ---------- */
+.how summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.import-item {
+  cursor: pointer;
+}
+.import-item input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  accent-color: var(--accent);
 }
 
 </style>
@@ -1444,6 +1489,40 @@ function parseQuickAdd(raw, today) {
     result.title = title || text;
   }
   return result;
+}
+
+// Lines pasted from Reminders (or produced by an iPhone Shortcut), one task
+// per line. Understood forms, most specific first:
+//   "2026-10-16 09:00 Morning workout"   date + time + title
+//   "2026-10-16 Buy a gift"              date + title
+//   "09:00 Morning workout"              time + title
+//   anything else                        read like the quick-add line
+const BULLETS = /^[\s•\-–—*○◯●◦☐☑✓✔▢□]+/;
+const pad2i = (n) => String(n).padStart(2, '0');
+
+function parseImportLines(raw, today) {
+  const out = [];
+  for (let line of normalizeDigits(raw || '').split(/\r?\n/)) {
+    line = line.replace(BULLETS, '').replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    let m = line.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?\s+(.+)$/);
+    if (m) {
+      const date = `${m[1]}-${pad2i(m[2])}-${pad2i(m[3])}`;
+      if (isDayKey(date)) {
+        const ok = m[4] != null && +m[4] < 24 && +m[5] < 60;
+        out.push({ title: m[6].trim(), date, start: ok ? `${pad2i(m[4])}:${m[5]}` : null, end: null });
+        continue;
+      }
+    }
+    m = line.match(/^(\d{1,2}):(\d{2})\s+(.+)$/);
+    if (m && +m[1] < 24 && +m[2] < 60) {
+      out.push({ title: m[3].trim(), date: null, start: `${pad2i(m[1])}:${m[2]}`, end: null });
+      continue;
+    }
+    const p = parseQuickAdd(line, today);
+    out.push(p.found ? { title: p.title, date: p.date, start: p.start, end: p.end } : { title: line, date: null, start: null, end: null });
+  }
+  return out;
 }
 
 // ---- crdt.js ----
@@ -2393,6 +2472,21 @@ function claudeRemote(db, uid) {
 // Interface text. Arabic is written as Arabic, not translated from English.
 
 const AR = {
+  appearance: 'المظهر',
+  themeAuto: 'تلقائي',
+  themeLight: 'نهاري',
+  themeDark: 'ليلي',
+  importTitle: 'استيراد من Reminders',
+  importIntro: 'انقل مهام الغد من Reminders إلى جدولك بلصقة واحدة.',
+  importOpen: 'استيراد مهام',
+  importHint: 'الصق المهام هنا، مهمة في كل سطر. الوقت والتاريخ في السطر يُقرآن تلقائيًا.',
+  importPaste: 'لصق',
+  importFor: 'لأي يوم؟',
+  importExists: 'موجودة',
+  importAdd: { zero: 'لا شيء للإضافة', one: 'إضافة مهمة واحدة', two: 'إضافة مهمتين', few: 'إضافة {n} مهام', many: 'إضافة {n} مهمة', other: 'إضافة {n} مهمة' },
+  imported: { zero: 'لم يُضف شيء', one: 'أُضيفت مهمة واحدة', two: 'أُضيفت مهمتان', few: 'أُضيفت {n} مهام', many: 'أُضيفت {n} مهمة', other: 'أُضيفت {n} مهمة' },
+  importHowTitle: 'اختصار يجلب مهامك من Reminders تلقائيًا',
+  importSteps: 'افتح تطبيق Shortcuts واضغط +.\nأضف Find Reminders، ثم Add Filter واختر: Is Completed ← is not true.\nأضف Repeat with Each.\nداخل التكرار أضف Text، واكتب فيه: Repeat Item ← Due Date (اضغط عليه واختر Date Format ← Custom واكتب yyyy-MM-dd HH:mm)، ثم مسافة، ثم Repeat Item ← Title.\nبعد End Repeat أضف Combine Text واختر New Lines، ثم Copy to Clipboard.\nقبل النوم شغّل الاختصار، ثم افتح Pocket Time ← ⋯ ← استيراد مهام ← لصق. تُختار مهام الغد تلقائيًا ولا تتكرر المهام الموجودة.',
   syncLocal: 'مهامك محفوظة على هذا الجهاز فقط.',
   syncGithub: 'تُزامن مهامك المشفرة عبر مستودعك الخاص على GitHub: {repo}',
   syncClaude: 'تُزامن مهامك المشفرة عبر حسابك في claude.ai.',
@@ -2528,6 +2622,21 @@ const AR = {
 };
 
 const EN = {
+  appearance: 'Appearance',
+  themeAuto: 'Auto',
+  themeLight: 'Light',
+  themeDark: 'Dark',
+  importTitle: 'Import from Reminders',
+  importIntro: 'Move tomorrow’s reminders into your schedule with one paste.',
+  importOpen: 'Import tasks',
+  importHint: 'Paste your tasks here, one per line. Dates and times in a line are picked up automatically.',
+  importPaste: 'Paste',
+  importFor: 'For which day?',
+  importExists: 'Already there',
+  importAdd: { one: 'Add 1 task', other: 'Add {n} tasks' },
+  imported: { one: '1 task added', other: '{n} tasks added' },
+  importHowTitle: 'A Shortcut that brings your reminders automatically',
+  importSteps: 'Open the Shortcuts app and tap +.\nAdd Find Reminders, then Add Filter: Is Completed is not true.\nAdd Repeat with Each.\nInside it add Text containing: Repeat Item › Due Date (tap it, Date Format › Custom: yyyy-MM-dd HH:mm), a space, then Repeat Item › Title.\nAfter End Repeat add Combine Text with New Lines, then Copy to Clipboard.\nBefore bed run the Shortcut, then open Pocket Time › ⋯ › Import tasks › Paste. Tomorrow’s tasks are selected for you and existing ones are not repeated.',
   syncLocal: 'Your tasks are saved on this device only.',
   syncGithub: 'Your encrypted tasks sync through your private GitHub repository: {repo}',
   syncClaude: 'Your encrypted tasks sync through your claude.ai account.',
@@ -2701,6 +2810,7 @@ const prefs = {
 
 const ui = {
   lang: prefs.get('lang') === 'en' ? 'en' : 'ar',
+  theme: ['light', 'dark'].includes(prefs.get('theme')) ? prefs.get('theme') : 'auto',
   day: todayKey(),
   lastToday: todayKey(),
   sheet: null,
@@ -3144,6 +3254,7 @@ function renderSheet(first) {
   if (!s) return;
   const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
   if (s.kind === 'task') renderTaskSheet(first);
+  else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
     const builders = { settings: settingsSheet, carry: carrySheet, calendar: calendarSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
@@ -3273,7 +3384,7 @@ function renderTaskSheet(first) {
       'button',
       {
         type: 'button',
-        class: 'text-btn quiet',
+        class: 'text-btn danger',
         'data-k': 'delete',
         onclick: () => {
           engine.remove(id);
@@ -3516,6 +3627,7 @@ function timePicker(task, which) {
     'div',
     { class: 'picker', dir: 'ltr' },
     h('div', { class: 'grid' }, hours),
+    h('div', { class: 'picker-divider', role: 'separator' }),
     h('div', { class: 'grid' }, minutes),
   );
 }
@@ -3736,29 +3848,35 @@ function settingsSheet() {
   const status = engine ? engine.status() : { state: 'local' };
   const rows = [];
 
+  const segmented = (label, options, current, pick, prefix) =>
+    h(
+      'div',
+      { class: 'settings-row' },
+      h('span', null, label),
+      h(
+        'div',
+        { class: 'seg', role: 'group', 'aria-label': label },
+        options.map(([code, text, lang]) =>
+          h('button', { type: 'button', lang: lang || null, 'data-k': prefix + code, 'aria-pressed': String(current === code), onclick: () => pick(code) }, text),
+        ),
+      ),
+    );
   rows.push(
     h(
       'div',
       { class: 'field' },
-      h(
-        'div',
-        { class: 'settings-row' },
-        h('span', null, t('language')),
-        h(
-          'div',
-          { class: 'seg', role: 'group', 'aria-label': t('language') },
-          [
-            ['ar', 'العربية'],
-            ['en', 'English'],
-          ].map(([code, label]) =>
-            h(
-              'button',
-              { type: 'button', lang: code, 'data-k': 'lang-' + code, 'aria-pressed': String(ui.lang === code), onclick: () => setLang(code) },
-              label,
-            ),
-          ),
-        ),
-      ),
+      segmented(t('language'), [['ar', 'العربية', 'ar'], ['en', 'English', 'en']], ui.lang, setLang, 'lang-'),
+      segmented(t('appearance'), [['auto', t('themeAuto')], ['light', t('themeLight')], ['dark', t('themeDark')]], ui.theme, setTheme, 'theme-'),
+    ),
+  );
+
+  rows.push(
+    h(
+      'div',
+      { class: 'field' },
+      h('span', { class: 'field-label' }, t('importTitle')),
+      h('p', { class: 'prose' }, t('importIntro')),
+      h('button', { type: 'button', class: 'btn', 'data-k': 'openImport', onclick: () => openImport('') }, t('importOpen')),
     ),
   );
 
@@ -3992,6 +4110,175 @@ async function exportData() {
   toast(t('exportDone'));
 }
 
+function applyTheme() {
+  const root = document.documentElement;
+  if (ui.theme === 'auto') delete root.dataset.theme;
+  else root.dataset.theme = ui.theme;
+}
+
+function setTheme(code) {
+  ui.theme = code;
+  prefs.set('theme', code === 'auto' ? '' : code);
+  applyTheme();
+  renderSheet(true);
+}
+
+// --- Import from Reminders ------------------------------------------------------
+
+function openImport(text) {
+  if (ui.sheet) closeSheet();
+  const hour = new Date().getHours();
+  openSheet('import', { text, target: addDays(todayKey(), hour >= 15 ? 1 : 0), picks: {} });
+}
+
+function importItems() {
+  const s = ui.sheet;
+  const items = parseImportLines(s.text, todayKey());
+  const existing = new Set(engine ? engine.tasks().map((x) => `${x.date}|${x.title.trim()}`) : []);
+  return items.map((it, i) => {
+    const date = it.date || s.target;
+    const dup = existing.has(`${date}|${it.title.trim()}`);
+    const key = `${i}|${it.title}`;
+    const auto = !dup && (!it.date || it.date === s.target);
+    return { ...it, date, dup, key, on: key in s.picks ? s.picks[key] : auto };
+  });
+}
+
+function renderImportSheet(first) {
+  const s = ui.sheet;
+  if (first) {
+    const area = h('textarea', { id: 'importText', class: 'text-input pair-input', rows: '6', dir: 'auto', spellcheck: 'false', placeholder: '2026-10-16 09:00 …', 'data-autofocus': s.text ? null : true });
+    area.value = s.text;
+    bindDigitNormalization(area);
+    area.addEventListener('input', () => {
+      s.text = area.value;
+      s.picks = {};
+      refreshImport();
+    });
+    const tools = [];
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      tools.push(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'chip',
+            'data-k': 'importPaste',
+            onclick: async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                  area.value = text;
+                  area.dispatchEvent(new Event('input'));
+                }
+              } catch (_) {
+                area.focus();
+              }
+            },
+          },
+          t('importPaste'),
+        ),
+      );
+    }
+    $('sheet').replaceChildren(
+      sheetHead(t('importTitle')),
+      h('div', { class: 'field' }, h('p', { class: 'prose' }, t('importHint')), area, tools.length ? h('div', { class: 'chips' }, tools) : null),
+      h('div', { id: 'importDynamic' }),
+      h(
+        'details',
+        { class: 'field how' },
+        h('summary', null, t('importHowTitle')),
+        h('ol', { class: 'steps prose', dir: 'auto' }, t('importSteps').split('\n').map((x) => h('li', null, x))),
+      ),
+    );
+  }
+  refreshImport();
+}
+
+function refreshImport() {
+  const s = ui.sheet;
+  const box = $('importDynamic');
+  if (!s || !box) return;
+  const items = importItems();
+  const today = todayKey();
+  const chosen = items.filter((x) => x.on);
+  const targetChips = [
+    [today, t('today')],
+    [addDays(today, 1), t('tomorrow')],
+  ].map(([key, label]) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'chip',
+        'data-k': 'importFor-' + key,
+        'aria-pressed': String(s.target === key),
+        onclick: () => {
+          s.target = key;
+          s.picks = {};
+          refreshImport();
+        },
+      },
+      label,
+    ),
+  );
+  const list = items.map((it) => {
+    const box = h('input', { type: 'checkbox', 'data-k': 'pick-' + it.key });
+    box.checked = it.on;
+    box.addEventListener('change', () => {
+      s.picks[it.key] = box.checked;
+      refreshImport();
+    });
+    return h(
+      'label',
+      { class: 'carry-item import-item' },
+      box,
+      h(
+        'span',
+        { class: 'task-text' },
+        h('span', { class: 'task-title', dir: 'auto' }, it.title),
+        h(
+          'span',
+          { class: 'task-meta tnum' },
+          shortDay(it.date),
+          it.start ? ' · ' : '',
+          it.start ? timeEl(rangeText(it.start, it.end)) : null,
+          it.dup ? h('span', { class: 'tag' }, t('importExists')) : null,
+        ),
+      ),
+    );
+  });
+  const add = h('button', { type: 'button', class: 'btn primary block', 'data-k': 'importAdd', disabled: !chosen.length }, t('importAdd', { n: chosen.length }));
+  add.addEventListener('click', () => {
+    if (!engine) return;
+    for (const it of chosen) engine.create({ title: it.title, date: it.date, start: it.start, end: it.end });
+    const target = s.target;
+    closeSheet();
+    goTo(target);
+    toast(t('imported', { n: chosen.length }));
+  });
+  box.replaceChildren(
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, t('importFor')), h('div', { class: 'chips' }, targetChips)),
+    items.length ? h('div', { class: 'field' }, list) : null,
+    h('div', { class: 'sheet-foot' }, add),
+  );
+}
+
+// "...#import=<lines>" from an iPhone Shortcut opens the import screen.
+function importFromAddress() {
+  const m = location.hash.match(/[#&]import=([^&]*)/);
+  if (!m) return false;
+  let text = '';
+  try {
+    text = decodeURIComponent(m[1]);
+  } catch (_) {}
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (_) {}
+  openImport(text);
+  return true;
+}
+
 function setLang(code) {
   ui.lang = code;
   prefs.set('lang', code);
@@ -4166,6 +4453,7 @@ async function boot() {
   }
 
   if (await pairFromAddress()) return;
+  importFromAddress();
   await connectSync(false);
 }
 
@@ -4201,6 +4489,12 @@ function setupEvents() {
     openSheet('calendar');
   });
   $('backdrop').addEventListener('click', closeSheet);
+  // A tap on empty space in the day goes straight to writing a new task.
+  $('main').addEventListener('click', (e) => {
+    if (e.target.closest('button, a, input, textarea, label, li.task')) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    input().focus();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -4273,7 +4567,9 @@ function setupEvents() {
     vv.addEventListener('resize', fit);
   }
 
-  window.addEventListener('hashchange', () => engine && pairFromAddress());
+  window.addEventListener('hashchange', async () => {
+    if (engine && !(await pairFromAddress())) importFromAddress();
+  });
   window.addEventListener('online', () => {
     if (engine) {
       engine.flush();
@@ -4311,6 +4607,7 @@ function tick() {
 }
 
 applyLang();
+applyTheme();
 setupComposer();
 setupEvents();
 render();

@@ -20,7 +20,7 @@ import {
   nextQuarter,
   dayKey,
 } from './dates.js';
-import { parseQuickAdd } from './parse.js';
+import { parseQuickAdd, parseImportLines } from './parse.js';
 import { translator } from './i18n.js';
 import { SyncEngine } from './sync.js';
 import { openIdbStore, memoryStore } from './storage.js';
@@ -48,6 +48,7 @@ const prefs = {
 
 const ui = {
   lang: prefs.get('lang') === 'en' ? 'en' : 'ar',
+  theme: ['light', 'dark'].includes(prefs.get('theme')) ? prefs.get('theme') : 'auto',
   day: todayKey(),
   lastToday: todayKey(),
   sheet: null,
@@ -491,6 +492,7 @@ function renderSheet(first) {
   if (!s) return;
   const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
   if (s.kind === 'task') renderTaskSheet(first);
+  else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
     const builders = { settings: settingsSheet, carry: carrySheet, calendar: calendarSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
@@ -620,7 +622,7 @@ function renderTaskSheet(first) {
       'button',
       {
         type: 'button',
-        class: 'text-btn quiet',
+        class: 'text-btn danger',
         'data-k': 'delete',
         onclick: () => {
           engine.remove(id);
@@ -863,6 +865,7 @@ function timePicker(task, which) {
     'div',
     { class: 'picker', dir: 'ltr' },
     h('div', { class: 'grid' }, hours),
+    h('div', { class: 'picker-divider', role: 'separator' }),
     h('div', { class: 'grid' }, minutes),
   );
 }
@@ -1083,29 +1086,35 @@ function settingsSheet() {
   const status = engine ? engine.status() : { state: 'local' };
   const rows = [];
 
+  const segmented = (label, options, current, pick, prefix) =>
+    h(
+      'div',
+      { class: 'settings-row' },
+      h('span', null, label),
+      h(
+        'div',
+        { class: 'seg', role: 'group', 'aria-label': label },
+        options.map(([code, text, lang]) =>
+          h('button', { type: 'button', lang: lang || null, 'data-k': prefix + code, 'aria-pressed': String(current === code), onclick: () => pick(code) }, text),
+        ),
+      ),
+    );
   rows.push(
     h(
       'div',
       { class: 'field' },
-      h(
-        'div',
-        { class: 'settings-row' },
-        h('span', null, t('language')),
-        h(
-          'div',
-          { class: 'seg', role: 'group', 'aria-label': t('language') },
-          [
-            ['ar', 'العربية'],
-            ['en', 'English'],
-          ].map(([code, label]) =>
-            h(
-              'button',
-              { type: 'button', lang: code, 'data-k': 'lang-' + code, 'aria-pressed': String(ui.lang === code), onclick: () => setLang(code) },
-              label,
-            ),
-          ),
-        ),
-      ),
+      segmented(t('language'), [['ar', 'العربية', 'ar'], ['en', 'English', 'en']], ui.lang, setLang, 'lang-'),
+      segmented(t('appearance'), [['auto', t('themeAuto')], ['light', t('themeLight')], ['dark', t('themeDark')]], ui.theme, setTheme, 'theme-'),
+    ),
+  );
+
+  rows.push(
+    h(
+      'div',
+      { class: 'field' },
+      h('span', { class: 'field-label' }, t('importTitle')),
+      h('p', { class: 'prose' }, t('importIntro')),
+      h('button', { type: 'button', class: 'btn', 'data-k': 'openImport', onclick: () => openImport('') }, t('importOpen')),
     ),
   );
 
@@ -1339,6 +1348,175 @@ async function exportData() {
   toast(t('exportDone'));
 }
 
+function applyTheme() {
+  const root = document.documentElement;
+  if (ui.theme === 'auto') delete root.dataset.theme;
+  else root.dataset.theme = ui.theme;
+}
+
+function setTheme(code) {
+  ui.theme = code;
+  prefs.set('theme', code === 'auto' ? '' : code);
+  applyTheme();
+  renderSheet(true);
+}
+
+// --- Import from Reminders ------------------------------------------------------
+
+function openImport(text) {
+  if (ui.sheet) closeSheet();
+  const hour = new Date().getHours();
+  openSheet('import', { text, target: addDays(todayKey(), hour >= 15 ? 1 : 0), picks: {} });
+}
+
+function importItems() {
+  const s = ui.sheet;
+  const items = parseImportLines(s.text, todayKey());
+  const existing = new Set(engine ? engine.tasks().map((x) => `${x.date}|${x.title.trim()}`) : []);
+  return items.map((it, i) => {
+    const date = it.date || s.target;
+    const dup = existing.has(`${date}|${it.title.trim()}`);
+    const key = `${i}|${it.title}`;
+    const auto = !dup && (!it.date || it.date === s.target);
+    return { ...it, date, dup, key, on: key in s.picks ? s.picks[key] : auto };
+  });
+}
+
+function renderImportSheet(first) {
+  const s = ui.sheet;
+  if (first) {
+    const area = h('textarea', { id: 'importText', class: 'text-input pair-input', rows: '6', dir: 'auto', spellcheck: 'false', placeholder: '2026-10-16 09:00 …', 'data-autofocus': s.text ? null : true });
+    area.value = s.text;
+    bindDigitNormalization(area);
+    area.addEventListener('input', () => {
+      s.text = area.value;
+      s.picks = {};
+      refreshImport();
+    });
+    const tools = [];
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      tools.push(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'chip',
+            'data-k': 'importPaste',
+            onclick: async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                  area.value = text;
+                  area.dispatchEvent(new Event('input'));
+                }
+              } catch (_) {
+                area.focus();
+              }
+            },
+          },
+          t('importPaste'),
+        ),
+      );
+    }
+    $('sheet').replaceChildren(
+      sheetHead(t('importTitle')),
+      h('div', { class: 'field' }, h('p', { class: 'prose' }, t('importHint')), area, tools.length ? h('div', { class: 'chips' }, tools) : null),
+      h('div', { id: 'importDynamic' }),
+      h(
+        'details',
+        { class: 'field how' },
+        h('summary', null, t('importHowTitle')),
+        h('ol', { class: 'steps prose', dir: 'auto' }, t('importSteps').split('\n').map((x) => h('li', null, x))),
+      ),
+    );
+  }
+  refreshImport();
+}
+
+function refreshImport() {
+  const s = ui.sheet;
+  const box = $('importDynamic');
+  if (!s || !box) return;
+  const items = importItems();
+  const today = todayKey();
+  const chosen = items.filter((x) => x.on);
+  const targetChips = [
+    [today, t('today')],
+    [addDays(today, 1), t('tomorrow')],
+  ].map(([key, label]) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'chip',
+        'data-k': 'importFor-' + key,
+        'aria-pressed': String(s.target === key),
+        onclick: () => {
+          s.target = key;
+          s.picks = {};
+          refreshImport();
+        },
+      },
+      label,
+    ),
+  );
+  const list = items.map((it) => {
+    const box = h('input', { type: 'checkbox', 'data-k': 'pick-' + it.key });
+    box.checked = it.on;
+    box.addEventListener('change', () => {
+      s.picks[it.key] = box.checked;
+      refreshImport();
+    });
+    return h(
+      'label',
+      { class: 'carry-item import-item' },
+      box,
+      h(
+        'span',
+        { class: 'task-text' },
+        h('span', { class: 'task-title', dir: 'auto' }, it.title),
+        h(
+          'span',
+          { class: 'task-meta tnum' },
+          shortDay(it.date),
+          it.start ? ' · ' : '',
+          it.start ? timeEl(rangeText(it.start, it.end)) : null,
+          it.dup ? h('span', { class: 'tag' }, t('importExists')) : null,
+        ),
+      ),
+    );
+  });
+  const add = h('button', { type: 'button', class: 'btn primary block', 'data-k': 'importAdd', disabled: !chosen.length }, t('importAdd', { n: chosen.length }));
+  add.addEventListener('click', () => {
+    if (!engine) return;
+    for (const it of chosen) engine.create({ title: it.title, date: it.date, start: it.start, end: it.end });
+    const target = s.target;
+    closeSheet();
+    goTo(target);
+    toast(t('imported', { n: chosen.length }));
+  });
+  box.replaceChildren(
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, t('importFor')), h('div', { class: 'chips' }, targetChips)),
+    items.length ? h('div', { class: 'field' }, list) : null,
+    h('div', { class: 'sheet-foot' }, add),
+  );
+}
+
+// "...#import=<lines>" from an iPhone Shortcut opens the import screen.
+function importFromAddress() {
+  const m = location.hash.match(/[#&]import=([^&]*)/);
+  if (!m) return false;
+  let text = '';
+  try {
+    text = decodeURIComponent(m[1]);
+  } catch (_) {}
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (_) {}
+  openImport(text);
+  return true;
+}
+
 function setLang(code) {
   ui.lang = code;
   prefs.set('lang', code);
@@ -1513,6 +1691,7 @@ async function boot() {
   }
 
   if (await pairFromAddress()) return;
+  importFromAddress();
   await connectSync(false);
 }
 
@@ -1548,6 +1727,12 @@ function setupEvents() {
     openSheet('calendar');
   });
   $('backdrop').addEventListener('click', closeSheet);
+  // A tap on empty space in the day goes straight to writing a new task.
+  $('main').addEventListener('click', (e) => {
+    if (e.target.closest('button, a, input, textarea, label, li.task')) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    input().focus();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -1620,7 +1805,9 @@ function setupEvents() {
     vv.addEventListener('resize', fit);
   }
 
-  window.addEventListener('hashchange', () => engine && pairFromAddress());
+  window.addEventListener('hashchange', async () => {
+    if (engine && !(await pairFromAddress())) importFromAddress();
+  });
   window.addEventListener('online', () => {
     if (engine) {
       engine.flush();
@@ -1658,6 +1845,7 @@ function tick() {
 }
 
 applyLang();
+applyTheme();
 setupComposer();
 setupEvents();
 render();

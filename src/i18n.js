@@ -1,6 +1,21 @@
 // Interface text. Arabic is written as Arabic, not translated from English.
 
 const AR = {
+  appearance: 'المظهر',
+  themeAuto: 'تلقائي',
+  themeLight: 'نهاري',
+  themeDark: 'ليلي',
+  importTitle: 'استيراد من Reminders',
+  importIntro: 'انقل مهام الغد من Reminders إلى جدولك بلصقة واحدة.',
+  importOpen: 'استيراد مهام',
+  importHint: 'الصق المهام هنا، مهمة في كل سطر. الوقت والتاريخ في السطر يُقرآن تلقائيًا.',
+  importPaste: 'لصق',
+  importFor: 'لأي يوم؟',
+  importExists: 'موجودة',
+  importAdd: { zero: 'لا شيء للإضافة', one: 'إضافة مهمة واحدة', two: 'إضافة مهمتين', few: 'إضافة {n} مهام', many: 'إضافة {n} مهمة', other: 'إضافة {n} مهمة' },
+  imported: { zero: 'لم يُضف شيء', one: 'أُضيفت مهمة واحدة', two: 'أُضيفت مهمتان', few: 'أُضيفت {n} مهام', many: 'أُضيفت {n} مهمة', other: 'أُضيفت {n} مهمة' },
+  importHowTitle: 'اختصار يجلب مهامك من Reminders تلقائيًا',
+  importSteps: 'افتح تطبيق Shortcuts واضغط +.\nأضف Find Reminders، ثم Add Filter واختر: Is Completed ← is not true.\nأضف Repeat with Each.\nداخل التكرار أضف Text، واكتب فيه: Repeat Item ← Due Date (اضغط عليه واختر Date Format ← Custom واكتب yyyy-MM-dd HH:mm)، ثم مسافة، ثم Repeat Item ← Title.\nبعد End Repeat أضف Combine Text واختر New Lines، ثم Copy to Clipboard.\nقبل النوم شغّل الاختصار، ثم افتح Pocket Time ← ⋯ ← استيراد مهام ← لصق. تُختار مهام الغد تلقائيًا ولا تتكرر المهام الموجودة.',
   syncLocal: 'مهامك محفوظة على هذا الجهاز فقط.',
   syncGithub: 'تُزامن مهامك المشفرة عبر مستودعك الخاص على GitHub: {repo}',
   syncClaude: 'تُزامن مهامك المشفرة عبر حسابك في claude.ai.',
@@ -136,6 +151,21 @@ const AR = {
 };
 
 const EN = {
+  appearance: 'Appearance',
+  themeAuto: 'Auto',
+  themeLight: 'Light',
+  themeDark: 'Dark',
+  importTitle: 'Import from Reminders',
+  importIntro: 'Move tomorrow’s reminders into your schedule with one paste.',
+  importOpen: 'Import tasks',
+  importHint: 'Paste your tasks here, one per line. Dates and times in a line are picked up automatically.',
+  importPaste: 'Paste',
+  importFor: 'For which day?',
+  importExists: 'Already there',
+  importAdd: { one: 'Add 1 task', other: 'Add {n} tasks' },
+  imported: { one: '1 task added', other: '{n} tasks added' },
+  importHowTitle: 'A Shortcut that brings your reminders automatically',
+  importSteps: 'Open the Shortcuts app and tap +.\nAdd Find Reminders, then Add Filter: Is Completed is not true.\nAdd Repeat with Each.\nInside it add Text containing: Repeat Item › Due Date (tap it, Date Format › Custom: yyyy-MM-dd HH:mm), a space, then Repeat Item › Title.\nAfter End Repeat add Combine Text with New Lines, then Copy to Clipboard.\nBefore bed run the Shortcut, then open Pocket Time › ⋯ › Import tasks › Paste. Tomorrow’s tasks are selected for you and existing ones are not repeated.',
   syncLocal: 'Your tasks are saved on this device only.',
   syncGithub: 'Your encrypted tasks sync through your private GitHub repository: {repo}',
   syncClaude: 'Your encrypted tasks sync through your claude.ai account.',

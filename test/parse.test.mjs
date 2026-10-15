@@ -117,3 +117,27 @@ test('invalid times are ignored', () => {
   assert.equal(p('code 25:00').found, false);
   assert.equal(p('x 10:75').found, false);
 });
+
+import { parseImportLines } from '../src/parse.js';
+
+test('import: Shortcut lines, plain lines, bullets and Arabic digits', () => {
+  const text = [
+    '2026-10-16 09:00 تمارين الصباح',
+    '2026-10-16 00:05 تشييك التنزيل + أخبار ارسنال',
+    '٢٠٢٦-١٠-١٦ ١٥:٠٠ حلاق (Oct/15)',
+    '2026-10-17 شراء هدية',
+    '• 14:30 مكالمة',
+    '○ قراءة كتاب 20:00-20:30',
+    '',
+    '- فكرة بلا وقت',
+  ].join('\n');
+  assert.deepEqual(parseImportLines(text, TODAY), [
+    { title: 'تمارين الصباح', date: '2026-10-16', start: '09:00', end: null },
+    { title: 'تشييك التنزيل + أخبار ارسنال', date: '2026-10-16', start: '00:05', end: null },
+    { title: 'حلاق (Oct/15)', date: '2026-10-16', start: '15:00', end: null },
+    { title: 'شراء هدية', date: '2026-10-17', start: null, end: null },
+    { title: 'مكالمة', date: null, start: '14:30', end: null },
+    { title: 'قراءة كتاب', date: null, start: '20:00', end: '20:30' },
+    { title: 'فكرة بلا وقت', date: null, start: null, end: null },
+  ]);
+});

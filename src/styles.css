@@ -13,6 +13,11 @@
   --tag-bg: #f2ecdc;
   --tag-fg: #6d5a1e;
   --scrim: rgba(18, 22, 30, 0.32);
+  --surface: #f2f4f7;
+  --sheet: #ffffff;
+  --sel-bg: #15181d;
+  --sel-fg: #ffffff;
+  --danger: #c2372d;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Arabic', 'Segoe UI', 'Noto Sans Arabic',
     'Noto Sans', Tahoma, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -22,34 +27,44 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0e1013;
-    --page: #16191e;
-    --fg: #e9ebef;
-    --muted: #979eac;
-    --faint: #697080;
-    --line: #262a31;
-    --accent: #86a4ff;
-    --accent-fg: #0e1013;
-    --accent-soft: #1d2638;
-    --tag-bg: #2c2717;
-    --tag-fg: #d9c58a;
-    --scrim: rgba(0, 0, 0, 0.55);
+    --bg: #000000;
+    --page: #000000;
+    --fg: #f2f2f5;
+    --muted: #a1a1aa;
+    --faint: #6c6c74;
+    --line: #232327;
+    --accent: #7ea6ff;
+    --accent-fg: #06080d;
+    --accent-soft: #14203a;
+    --tag-bg: #2d2714;
+    --tag-fg: #e6cc80;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --surface: #1d1d20;
+    --sheet: #121214;
+    --sel-bg: #7ea6ff;
+    --sel-fg: #06080d;
+    --danger: #ff6b63;
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --bg: #0e1013;
-  --page: #16191e;
-  --fg: #e9ebef;
-  --muted: #979eac;
-  --faint: #697080;
-  --line: #262a31;
-  --accent: #86a4ff;
-  --accent-fg: #0e1013;
-  --accent-soft: #1d2638;
-  --tag-bg: #2c2717;
-  --tag-fg: #d9c58a;
-  --scrim: rgba(0, 0, 0, 0.55);
+  --bg: #000000;
+  --page: #000000;
+  --fg: #f2f2f5;
+  --muted: #a1a1aa;
+  --faint: #6c6c74;
+  --line: #232327;
+  --accent: #7ea6ff;
+  --accent-fg: #06080d;
+  --accent-soft: #14203a;
+  --tag-bg: #2d2714;
+  --tag-fg: #e6cc80;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --surface: #1d1d20;
+  --sheet: #121214;
+  --sel-bg: #7ea6ff;
+  --sel-fg: #06080d;
+  --danger: #ff6b63;
   color-scheme: dark;
 }
 
@@ -240,8 +255,8 @@ bdi.time {
   color: var(--accent);
 }
 .week-day[aria-current='date'] .week-num {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .week-day.has-tasks::after {
   content: '';
@@ -268,7 +283,8 @@ bdi.time {
   -webkit-overflow-scrolling: touch;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 4px 16px;
+  /* Room below the last task: a tap there starts a new one. */
+  padding-block: 4px 96px;
 }
 .section-label {
   font-size: 12px;
@@ -430,7 +446,7 @@ bdi.time {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   color: var(--muted);
   font-size: 14px;
   text-align: start;
@@ -491,7 +507,7 @@ bdi.time {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg);
+  background: var(--surface);
   border-radius: 24px;
   padding-inline: 16px 4px;
   border: 1px solid transparent;
@@ -551,7 +567,7 @@ bdi.time {
   max-height: 90%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--page);
+  background: var(--sheet);
   border-radius: 18px 18px 0 0;
   padding-top: 8px;
   padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
@@ -593,7 +609,7 @@ bdi.time {
   min-height: var(--tap);
   position: sticky;
   top: -8px;
-  background: var(--page);
+  background: var(--sheet);
   z-index: 1;
 }
 .sheet-head h2 {
@@ -610,6 +626,16 @@ bdi.time {
 .text-btn.quiet {
   color: var(--muted);
   font-weight: 400;
+}
+.text-btn.danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+/* Separates the hour grid from the minute grid. */
+.picker-divider {
+  height: 1px;
+  background: var(--line);
+  margin-block: 4px;
 }
 .field {
   display: flex;
@@ -652,7 +678,7 @@ bdi.time {
   height: 48px;
   padding-inline: 14px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 17px;
 }
 .chips {
@@ -664,15 +690,15 @@ bdi.time {
   min-height: 36px;
   padding-inline: 12px;
   border-radius: 18px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 15px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .chip[aria-pressed='true'] {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .time-row {
   display: flex;
@@ -684,7 +710,7 @@ bdi.time {
   min-width: 84px;
   height: 44px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   font-size: 20px;
   font-weight: 600;
   display: inline-flex;
@@ -711,7 +737,7 @@ bdi.time {
   gap: 8px;
   padding: 10px;
   border-radius: 14px;
-  background: var(--bg);
+  background: var(--surface);
 }
 .grid {
   display: grid;
@@ -722,7 +748,7 @@ bdi.time {
   height: 40px;
   border-radius: 10px;
   font-size: 16px;
-  background: var(--page);
+  background: var(--sheet);
 }
 .grid button[aria-pressed='true'] {
   background: var(--accent);
@@ -765,8 +791,8 @@ bdi.time {
   font-weight: 700;
 }
 .month button[aria-pressed='true'] {
-  background: var(--fg);
-  color: var(--page);
+  background: var(--sel-bg);
+  color: var(--sel-fg);
 }
 .note {
   font-size: 13px;
@@ -787,7 +813,7 @@ bdi.time {
   min-height: 48px;
   padding-inline: 18px;
   border-radius: 14px;
-  background: var(--bg);
+  background: var(--surface);
   font-weight: 600;
   font-size: 16px;
 }
@@ -818,7 +844,7 @@ bdi.time {
   overflow-wrap: anywhere;
 }
 .conflict .chips .chip {
-  background: var(--page);
+  background: var(--sheet);
   color: var(--fg);
 }
 .carry-item {
@@ -842,7 +868,7 @@ bdi.time {
 }
 .seg {
   display: inline-flex;
-  background: var(--bg);
+  background: var(--surface);
   border-radius: 12px;
   padding: 3px;
 }
@@ -853,7 +879,7 @@ bdi.time {
   font-size: 15px;
 }
 .seg button[aria-pressed='true'] {
-  background: var(--page);
+  background: var(--sheet);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
@@ -946,7 +972,7 @@ bdi.time {
   text-align: center;
   padding: 14px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface);
   user-select: all;
   -webkit-user-select: all;
   word-break: break-all;
@@ -1004,4 +1030,23 @@ a.btn {
   padding-block: 10px;
   font-size: 15px;
   word-break: break-all;
+}
+
+/* ---------- Import ---------- */
+.how summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.import-item {
+  cursor: pointer;
+}
+.import-item input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  accent-color: var(--accent);
 }

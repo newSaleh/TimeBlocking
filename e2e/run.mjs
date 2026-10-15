@@ -24,6 +24,9 @@ async function step(name, fn) {
     console.log(`  ✓ ${name}`);
   } catch (e) {
     results.push({ name, ok: false, error: String((e && e.message) || e).split('\n')[0] });
+    try {
+      await P.screenshot({ path: `e2e/debug-${results.length}.png` });
+    } catch (_) {}
     console.log(`  ✗ ${name}\n      ${String((e && e.message) || e).split('\n')[0]}`);
   }
 }
@@ -385,6 +388,72 @@ await step('Earlier open tasks are offered, never moved automatically', async ()
   await P.click('#list .carry');
   await P.click('#sheet .carry-item .chip');
   await row(P, 'مهمة الأمس').waitFor();
+});
+
+await step('Tapping empty space in the day opens the composer', async () => {
+  await P.evaluate(() => document.activeElement && document.activeElement.blur());
+  await P.evaluate(() => (document.getElementById('main').scrollTop = 1e6));
+  const box = await P.locator('#main').boundingBox();
+  await P.mouse.click(box.x + box.width / 2, box.y + box.height - 30);
+  assert(await P.evaluate(() => document.activeElement.id === 'newTask'), 'composer focused');
+  await P.evaluate(() => document.activeElement.blur());
+});
+
+await step('Import from Reminders: paste, tomorrow pre-selected, no duplicates', async () => {
+  const tomorrow = await P.evaluate(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const lines = [`${tomorrow} 09:00 تمارين الصباح`, `${tomorrow} 15:00 حلاق (Oct/15)`, `${tomorrow} 00:00 شراء هدية`, `2030-01-01 10:00 مهمة بعيدة`].join('\n');
+  await P.click('#settingsBtn');
+  await P.click('#sheet [data-k="openImport"]');
+  await P.fill('#importText', lines);
+  await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
+  const checked = await P.evaluate(() => [...document.querySelectorAll('.import-item input')].map((x) => x.checked));
+  // "شراء هدية" was moved to tomorrow earlier, so it is marked as already there.
+  assert(JSON.stringify(checked) === JSON.stringify([true, true, false, false]), 'selection ' + JSON.stringify(checked));
+  assert((await P.textContent('#sheet .import-item:nth-child(3) .tag')) === 'موجودة', 'duplicate marked');
+  await P.waitForTimeout(200);
+  await P.screenshot({ path: `${shots}/import-iphone.png` });
+  await P.click('#sheet [data-k="importAdd"]');
+  await row(P, 'تمارين الصباح').waitFor();
+  assert((await row(P, 'حلاق (Oct/15)').locator('.task-time .start').textContent()) === '15:00', 'time kept');
+  await P.click('#settingsBtn');
+  await P.click('#sheet [data-k="openImport"]');
+  await P.fill('#importText', lines);
+  await P.click(`#sheet [data-k="importFor-${tomorrow}"]`);
+  const again = await P.evaluate(() => [...document.querySelectorAll('.import-item')].map((x) => [x.querySelector('input').checked, !!x.querySelector('.tag')]));
+  assert(again[0][0] === false && again[0][1] === true, 'existing task not selected again');
+  await closeSheet(P);
+  await P.click('#todayBtn');
+});
+
+await step('Shortcut link (#import=...) opens the import screen filled in', async () => {
+  await P.evaluate(() => (location.hash = 'import=' + encodeURIComponent('10:00 من الاختصار')));
+  await P.waitForSelector('#importText');
+  assert((await P.inputValue('#importText')) === '10:00 من الاختصار', 'prefilled');
+  assert(!(await P.evaluate(() => location.hash)).includes('import'), 'hash cleared');
+  await closeSheet(P);
+});
+
+await step('Light / dark switch, and a red delete button', async () => {
+  await P.click('#settingsBtn');
+  await P.click('#sheet [data-k="theme-dark"]');
+  assert((await P.getAttribute('html', 'data-theme')) === 'dark', 'dark');
+  await P.waitForTimeout(200);
+  await P.screenshot({ path: `${shots}/settings-dark-iphone.png` });
+  await P.click('#sheet [data-k="theme-light"]');
+  assert((await P.getAttribute('html', 'data-theme')) === 'light', 'light');
+  await P.click('#sheet [data-k="theme-auto"]');
+  assert((await P.getAttribute('html', 'data-theme')) === null, 'auto');
+  await closeSheet(P);
+  await openTask(P, 'مكالمة');
+  const color = await P.$eval('#sheet [data-k="delete"]', (el) => getComputedStyle(el).color);
+  assert(/rgb\((19[0-9]|2\d\d), (\d{1,2}), /.test(color), 'red-ish: ' + color);
+  await P.click('#sheet [data-k="time-start"]');
+  assert(await P.isVisible('#sheet .picker-divider'), 'divider between hours and minutes');
+  await closeSheet(P);
 });
 
 await step('12. Arabic RTL and English LTR', async () => {

@@ -197,3 +197,37 @@ export function parseQuickAdd(raw, today) {
   }
   return result;
 }
+
+// Lines pasted from Reminders (or produced by an iPhone Shortcut), one task
+// per line. Understood forms, most specific first:
+//   "2026-10-16 09:00 Morning workout"   date + time + title
+//   "2026-10-16 Buy a gift"              date + title
+//   "09:00 Morning workout"              time + title
+//   anything else                        read like the quick-add line
+const BULLETS = /^[\s•\-–—*○◯●◦☐☑✓✔▢□]+/;
+const pad2i = (n) => String(n).padStart(2, '0');
+
+export function parseImportLines(raw, today) {
+  const out = [];
+  for (let line of normalizeDigits(raw || '').split(/\r?\n/)) {
+    line = line.replace(BULLETS, '').replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    let m = line.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?\s+(.+)$/);
+    if (m) {
+      const date = `${m[1]}-${pad2i(m[2])}-${pad2i(m[3])}`;
+      if (isDayKey(date)) {
+        const ok = m[4] != null && +m[4] < 24 && +m[5] < 60;
+        out.push({ title: m[6].trim(), date, start: ok ? `${pad2i(m[4])}:${m[5]}` : null, end: null });
+        continue;
+      }
+    }
+    m = line.match(/^(\d{1,2}):(\d{2})\s+(.+)$/);
+    if (m && +m[1] < 24 && +m[2] < 60) {
+      out.push({ title: m[3].trim(), date: null, start: `${pad2i(m[1])}:${m[2]}`, end: null });
+      continue;
+    }
+    const p = parseQuickAdd(line, today);
+    out.push(p.found ? { title: p.title, date: p.date, start: p.start, end: p.end } : { title: line, date: null, start: null, end: null });
+  }
+  return out;
+}

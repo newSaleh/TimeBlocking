@@ -33,7 +33,7 @@ const page = readFileSync('src/index.html', 'utf8').replace('/*STYLES*/', () => 
 
 const BASE_HEAD =
   '<meta charset="utf-8">' +
-  '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">' +
   '<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>';
 
 // The site may only talk to itself and the GitHub API: no third parties.
