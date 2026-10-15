@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SyncEngine } from '../src/sync.js';
 import { memoryStore } from '../src/storage.js';
-import { createKeyring } from '../src/crypto.js';
+import { newVault, importVaultKey } from '../src/crypto.js';
+import { githubRemote } from '../src/remote.js';
+import { createFakeGitHub } from './fake-github.mjs';
 import { stableStringify } from '../src/crdt.js';
 import { createFakeServer } from './fake-server.mjs';
 
@@ -10,7 +12,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function setup(n = 2) {
   const server = createFakeServer();
-  const { keyring, dek } = await createKeyring('test passphrase', 1000);
+  const vault = newVault();
+  const dek = await importVaultKey(vault.key);
+  const keyring = { kid: vault.kid };
   const devices = [];
   for (let i = 0; i < n; i++) {
     const conn = server.connect();
@@ -32,7 +36,7 @@ async function settle(engines, timeout = 5000) {
     const states = engines.map((e) => stableStringify([...e.buckets.entries()].sort()));
     const same = states.every((s) => s === states[0]);
     if (!busy && same) {
-      if (++stable >= 3) return;
+      if (++stable >= 4) return;
     } else stable = 0;
   }
   throw new Error('did not settle');
@@ -227,4 +231,87 @@ test('fuzz: three devices, random edits and outages, always converge', async () 
     const v0 = stableStringify(view(engines[0]));
     for (const e of engines) assert.equal(stableStringify(view(e)), v0);
   }
+});
+
+// --- GitHub remote ------------------------------------------------------------
+
+async function setupGitHub(n = 2) {
+  const gh = createFakeGitHub();
+  const vault = newVault();
+  const dek = await importVaultKey(vault.key);
+  const devices = [];
+  for (let i = 0; i < n; i++) {
+    const client = { offline: false };
+    const remote = githubRemote({ repo: gh.repo, token: gh.token, fetchImpl: gh.fetchFor(client), pollMs: 30 });
+    const store = memoryStore();
+    const engine = new SyncEngine({ store, remote, dek, kid: vault.kid, deviceId: 'gh' + i + 'xxxxxxx', flushDelay: 20 });
+    await engine.load();
+    devices.push({ engine, client, remote, store });
+  }
+  return { gh, vault, devices };
+}
+
+test('github: first device creates the vault, others join, strangers are refused', async () => {
+  const { gh, vault, devices: [a, b] } = await setupGitHub();
+  assert.equal(await a.remote.ensureVault(vault.kid), 'created');
+  assert.equal(await b.remote.ensureVault(vault.kid), 'ok');
+  assert.equal(await b.remote.ensureVault('someone-else'), 'mismatch');
+  const bad = githubRemote({ repo: gh.repo, token: 'wrong', fetchImpl: gh.fetchFor() });
+  await assert.rejects(bad.ensureVault(vault.kid), (e) => e.code === 'auth');
+  const pub = createFakeGitHub({ isPrivate: false });
+  await assert.rejects(githubRemote({ repo: pub.repo, token: pub.token, fetchImpl: pub.fetchFor() }).ensureVault('x'), (e) => e.code === 'public_repo');
+});
+
+test('github: tasks sync both ways and the repository holds ciphertext only', async () => {
+  const { gh, vault, devices: [a, b] } = await setupGitHub();
+  await a.remote.ensureVault(vault.kid);
+  a.engine.start();
+  b.engine.start();
+  const id = a.engine.create({ title: 'GH-SECRET', notes: 'note', date: '2026-10-15', start: '10:00' });
+  await settle([a.engine, b.engine]);
+  assert.equal(b.engine.get(id).title, 'GH-SECRET');
+  b.engine.update(id, { when: { s: '14:00' } });
+  await settle([a.engine, b.engine]);
+  assert.equal(a.engine.get(id).start, '14:00');
+  const dump = JSON.stringify([...gh.files.values()].map((f) => Buffer.from(f.content, 'base64').toString()));
+  assert.ok(!dump.includes('GH-SECRET') && !dump.includes('14:00'));
+  a.engine.stop();
+  b.engine.stop();
+});
+
+test('github: simultaneous writes to one bucket merge through sha conflicts', async () => {
+  const { vault, devices: [a, b] } = await setupGitHub();
+  await a.remote.ensureVault(vault.kid);
+  a.engine.start();
+  b.engine.start();
+  const id = a.engine.create({ title: 'shared', date: '2026-10-15' });
+  await settle([a.engine, b.engine]);
+  a.client.offline = true;
+  b.client.offline = true;
+  a.engine.update(id, { notes: 'from A' });
+  b.engine.update(id, { done: true });
+  b.engine.update(id, { when: { s: '09:00', e: '09:30' } });
+  await sleep(80);
+  a.client.offline = false;
+  b.client.offline = false;
+  a.engine.flush();
+  b.engine.flush();
+  await settle([a.engine, b.engine], 10000);
+  const t = a.engine.get(id);
+  assert.deepEqual([t.notes, t.done, t.start], ['from A', true, '09:00']);
+  assert.deepEqual(view(a.engine), view(b.engine));
+  a.engine.stop();
+  b.engine.stop();
+});
+
+test('github: a bad token is reported, not retried forever as "offline"', async () => {
+  const { gh, vault, devices: [a] } = await setupGitHub(1);
+  await a.remote.ensureVault(vault.kid);
+  const bad = githubRemote({ repo: gh.repo, token: 'expired', fetchImpl: gh.fetchFor(), pollMs: 30 });
+  const engine = new SyncEngine({ store: memoryStore(), remote: bad, dek: a.engine.dek, kid: vault.kid, deviceId: 'badxxxxxxx', flushDelay: 10 });
+  engine.start();
+  engine.create({ title: 'x', date: '2026-10-15' });
+  await sleep(150);
+  assert.equal(engine.status().state, 'auth');
+  engine.stop();
 });

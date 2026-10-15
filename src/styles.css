@@ -970,3 +970,38 @@ bdi.time {
   min-height: 44px;
   text-align: start;
 }
+
+/* ---------- Recovery and sync ---------- */
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
+}
+.send-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.send-row .btn {
+  min-width: 0;
+  padding-inline: 10px;
+}
+.steps {
+  margin: 0;
+  padding-inline-start: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.steps a {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pair-input {
+  height: auto;
+  padding-block: 10px;
+  font-size: 15px;
+  word-break: break-all;
+}

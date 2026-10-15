@@ -1,20 +1,13 @@
 // End-to-end encryption with the browser's built-in Web Crypto API only.
 //
-//   DEK  random AES-GCM-256 key that encrypts all task data.
-//   The server stores the DEK only wrapped (encrypted) twice:
-//     - by a key derived from the passphrase (PBKDF2-SHA-256, 600k iterations)
-//     - by a key derived from a 160-bit recovery code (HKDF-SHA-256)
-//   Devices keep the DEK as a non-extractable CryptoKey in IndexedDB.
-
-import { normalizeDigits } from './digits.js';
+// One random AES-GCM-256 "vault key" encrypts all task data. It is created
+// on the first device and never sent to the sync server. Other devices get
+// it from a recovery link the user sends to themselves (email, Telegram,
+// notes...). No passphrase to remember.
 
 const subtle = () => globalThis.crypto.subtle;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-
-export const PBKDF2_ITERATIONS = 600000;
-const DEK_AAD = enc.encode('pocket-time/v1/dek');
-const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 export function randomBytes(n) {
   const out = new Uint8Array(n);
@@ -45,189 +38,48 @@ export function fromB64(s) {
   return out;
 }
 
-// The same passphrase must give the same bytes on every keyboard: Unicode
-// NFC, Western digits, no stray leading/trailing spaces from autocorrect.
-export function normalizePassphrase(pass) {
-  return normalizeDigits(String(pass || '').normalize('NFC')).trim();
+const toB64url = (s) => s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = (s) => s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+
+/** A new vault: raw key (base64, kept on the device) and a public key id. */
+export function newVault() {
+  return { key: toB64(randomBytes(32)), kid: randomId(10) };
 }
 
-async function passphraseKey(pass, salt, iterations) {
-  const base = await subtle().importKey('raw', enc.encode(normalizePassphrase(pass)), 'PBKDF2', false, [
-    'deriveKey',
-  ]);
-  return subtle().deriveKey(
-    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
-    base,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-}
-
-// --- Recovery code -----------------------------------------------------------
-
-export function formatRecoveryCode(bytes) {
-  let bits = 0;
-  let value = 0;
-  let out = '';
-  for (const b of bytes) {
-    value = ((value << 8) | b) & 0xffff;
-    bits += 8;
-    while (bits >= 5) {
-      out += CROCKFORD[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) out += CROCKFORD[(value << (5 - bits)) & 31];
-  return out.match(/.{1,4}/g).join('-');
-}
-
-export function parseRecoveryCode(code) {
-  const clean = normalizeDigits(String(code || ''))
-    .toUpperCase()
-    .replace(/O/g, '0')
-    .replace(/[IL]/g, '1')
-    .replace(/[^0-9A-Z]/g, '');
-  if (clean.length !== 32) return null;
-  const out = new Uint8Array(20);
-  let bits = 0;
-  let value = 0;
-  let i = 0;
-  for (const ch of clean) {
-    const idx = CROCKFORD.indexOf(ch);
-    if (idx < 0) return null;
-    value = ((value << 5) | idx) & 0xffff;
-    bits += 5;
-    if (bits >= 8) {
-      out[i++] = (value >>> (bits - 8)) & 255;
-      bits -= 8;
-    }
-  }
-  return out;
-}
-
-async function recoveryKey(codeBytes, salt) {
-  const base = await subtle().importKey('raw', codeBytes, 'HKDF', false, ['deriveKey']);
-  return subtle().deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('pocket-time/v1/recovery') },
-    base,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-}
-
-// --- DEK wrapping ------------------------------------------------------------
-
-async function wrapRaw(rawDek, kek) {
-  const iv = randomBytes(12);
-  const ct = await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: DEK_AAD }, kek, rawDek);
-  return { iv: toB64(iv), ct: toB64(ct) };
-}
-
-async function unwrapRaw(wrapped, kek) {
-  const raw = await subtle().decrypt(
-    { name: 'AES-GCM', iv: fromB64(wrapped.iv), additionalData: DEK_AAD },
-    kek,
-    fromB64(wrapped.ct),
-  );
-  return new Uint8Array(raw);
-}
-
-function importDek(raw) {
+/** The usable CryptoKey for a stored raw key. */
+export function importVaultKey(keyB64) {
+  const raw = fromB64(keyB64);
+  if (raw.length !== 32) throw new Error('bad-key');
   return subtle().importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-async function wrapWithPassphrase(raw, pass, iterations) {
-  const salt = randomBytes(16);
-  const kek = await passphraseKey(pass, salt, iterations);
-  return { kdf: 'PBKDF2-SHA-256', iter: iterations, salt: toB64(salt), ...(await wrapRaw(raw, kek)) };
+// --- Recovery / pairing payload -----------------------------------------------
+// Everything a new device needs, carried in the URL fragment (never sent to
+// any web server): the vault key, its id and, if set, the sync settings.
+
+export function encodePairing({ key, kid, sync }) {
+  const payload = { v: 1, k: key, i: kid };
+  if (sync && sync.type === 'github') payload.g = { r: sync.repo, t: sync.token };
+  return toB64url(btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
 }
 
-async function wrapWithRecovery(raw) {
-  const code = randomBytes(20);
-  const salt = randomBytes(16);
-  const kek = await recoveryKey(code, salt);
-  return { wrapped: { kdf: 'HKDF-SHA-256', salt: toB64(salt), ...(await wrapRaw(raw, kek)) }, code: formatRecoveryCode(code) };
-}
-
-export class WrongSecretError extends Error {
-  constructor() {
-    super('wrong-secret');
-    this.code = 'wrong-secret';
-  }
-}
-
-async function rawFromPassphrase(keyring, pass) {
-  const p = keyring.pass;
-  const kek = await passphraseKey(pass, fromB64(p.salt), p.iter);
+/** Accepts a full link, a "#pair=..." fragment or the bare code. */
+export function decodePairing(input) {
+  let s = String(input || '').trim();
+  const m = s.match(/[#&?]pair=([A-Za-z0-9_-]+)/);
+  if (m) s = m[1];
+  s = s.replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(s)) return null;
   try {
-    return await unwrapRaw(p, kek);
+    const p = JSON.parse(decodeURIComponent(escape(atob(fromB64url(s)))));
+    if (p.v !== 1 || typeof p.k !== 'string' || typeof p.i !== 'string') return null;
+    if (fromB64(p.k).length !== 32) return null;
+    const out = { key: p.k, kid: p.i, sync: null };
+    if (p.g && typeof p.g.r === 'string' && typeof p.g.t === 'string') out.sync = { type: 'github', repo: p.g.r, token: p.g.t };
+    return out;
   } catch (_) {
-    throw new WrongSecretError();
+    return null;
   }
-}
-
-async function rawFromRecovery(keyring, code) {
-  const bytes = parseRecoveryCode(code);
-  if (!bytes) throw new WrongSecretError();
-  const r = keyring.rec;
-  const kek = await recoveryKey(bytes, fromB64(r.salt));
-  try {
-    return await unwrapRaw(r, kek);
-  } catch (_) {
-    throw new WrongSecretError();
-  }
-}
-
-/** Creates a new vault: returns the keyring for the server, the DEK, and the
- *  recovery code to show once. */
-export async function createKeyring(pass, iterations = PBKDF2_ITERATIONS) {
-  const raw = randomBytes(32);
-  const pw = await wrapWithPassphrase(raw, pass, iterations);
-  const rec = await wrapWithRecovery(raw);
-  const keyring = { v: 1, kid: randomId(10), created: new Date().toISOString(), pass: pw, rec: rec.wrapped };
-  const dek = await importDek(raw);
-  raw.fill(0);
-  return { keyring, dek, recoveryCode: rec.code };
-}
-
-export async function unlockWithPassphrase(keyring, pass) {
-  const raw = await rawFromPassphrase(keyring, pass);
-  const dek = await importDek(raw);
-  raw.fill(0);
-  return dek;
-}
-
-/** Recovery: proves the code, then sets a new passphrase. */
-export async function recoverWithCode(keyring, code, newPass, iterations = PBKDF2_ITERATIONS) {
-  const raw = await rawFromRecovery(keyring, code);
-  const pass = await wrapWithPassphrase(raw, newPass, iterations);
-  const dek = await importDek(raw);
-  raw.fill(0);
-  return { keyring: { ...keyring, pass }, dek };
-}
-
-export async function changePassphrase(keyring, oldPass, newPass, iterations = PBKDF2_ITERATIONS) {
-  const raw = await rawFromPassphrase(keyring, oldPass);
-  const pass = await wrapWithPassphrase(raw, newPass, iterations);
-  raw.fill(0);
-  return { ...keyring, pass };
-}
-
-export async function newRecoveryCode(keyring, pass) {
-  const raw = await rawFromPassphrase(keyring, pass);
-  const rec = await wrapWithRecovery(raw);
-  raw.fill(0);
-  return { keyring: { ...keyring, rec: rec.wrapped }, recoveryCode: rec.code };
-}
-
-/** A random key for a device that cannot sync (no server keyring). */
-export async function createLocalKey() {
-  const raw = randomBytes(32);
-  const dek = await importDek(raw);
-  raw.fill(0);
-  return { dek, kid: 'local-' + randomId(8) };
 }
 
 // --- Data encryption ---------------------------------------------------------

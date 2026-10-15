@@ -24,17 +24,8 @@ import { parseQuickAdd } from './parse.js';
 import { translator } from './i18n.js';
 import { SyncEngine } from './sync.js';
 import { openIdbStore, memoryStore } from './storage.js';
-import { claudeRemote } from './remote.js';
-import {
-  createKeyring,
-  unlockWithPassphrase,
-  recoverWithCode,
-  changePassphrase,
-  newRecoveryCode,
-  createLocalKey,
-  normalizePassphrase,
-  randomId,
-} from './crypto.js';
+import { claudeRemote, githubRemote } from './remote.js';
+import { newVault, importVaultKey, encodePairing, decodePairing, randomId } from './crypto.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -68,7 +59,7 @@ let t = translator(ui.lang);
 let engine = null;
 let store = null;
 let storageWarning = false;
-const vault = { mode: null, uid: null, kid: null, remote: null, db: null, dbChecked: false, downloads: null };
+const vault = { data: null, remote: null, mismatch: false, downloads: null };
 
 const $ = (id) => document.getElementById(id);
 
@@ -316,20 +307,24 @@ function nowLine() {
 // Status line: quiet unless something needs saying.
 
 let pendingSince = null;
-function renderStatus() {
-  let text = '';
-  if (storageWarning) text = t('statusNoStorage');
-  if (engine) {
-    const s = engine.status();
-    if (s.state === 'syncing') pendingSince = pendingSince || Date.now();
-    else pendingSince = null;
-    if (s.state === 'locked') text = t('statusLocked');
-    else if (vault.mode === 'sync' && !engine.remote && vault.dbChecked) text = t('statusOffline');
-    else if (s.state === 'offline') text = t('statusOffline');
-    else if (s.state === 'syncing' && (!navigator.onLine || Date.now() - pendingSince > 4000)) {
-      text = navigator.onLine ? t('statusSyncing') : t('statusOffline');
-    }
+function statusText() {
+  if (storageWarning) return t('statusNoStorage');
+  if (vault.mismatch) return t('statusMismatch');
+  if (!engine) return '';
+  const s = engine.status();
+  if (s.state === 'syncing') pendingSince = pendingSince || Date.now();
+  else pendingSince = null;
+  if (s.state === 'locked') return t('statusMismatch');
+  if (s.state === 'auth') return t('statusAuth');
+  if (s.state === 'offline') return t('statusOffline');
+  if (s.state === 'syncing' && (!navigator.onLine || Date.now() - pendingSince > 4000)) {
+    return navigator.onLine ? t('statusSyncing') : t('statusOffline');
   }
+  return '';
+}
+
+function renderStatus() {
+  const text = statusText();
   const el = $('status');
   if (el.textContent !== text) el.textContent = text;
   el.hidden = !text;
@@ -1024,9 +1019,67 @@ function carrySheet() {
 
 // --- Settings sheet -------------------------------------------------------------
 
+const APP_URL = 'https://newsaleh.github.io/TimeBlocking/';
+const NEW_REPO_URL = 'https://github.com/new';
+const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new';
+
+function recoveryLink() {
+  const onOwnSite = !window.claude && /^https?:$/.test(location.protocol);
+  const base = onOwnSite ? location.origin + location.pathname : APP_URL;
+  return `${base}#pair=${encodePairing(vault.data)}`;
+}
+
+async function markRecoverySent() {
+  if (vault.data.recoverySent) return;
+  vault.data.recoverySent = true;
+  await saveVault();
+}
+
+function sendButtons() {
+  const link = recoveryLink();
+  const mark = () => markRecoverySent();
+  const mail = `mailto:?subject=${encodeURIComponent(t('recoverySubject'))}&body=${encodeURIComponent(t('recoveryMessage', { link }))}`;
+  const tg = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(t('recoveryTelegram'))}`;
+  const copy = h('button', { type: 'button', class: 'btn', 'data-k': 'copyLink' }, t('copyLink'));
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      copy.textContent = t('copied');
+      mark();
+    } catch (_) {
+      toast(link, null, 15000);
+    }
+  });
+  const buttons = [
+    h('a', { class: 'btn', href: mail, 'data-k': 'sendEmail', onclick: mark }, t('sendEmail')),
+    h('a', { class: 'btn', href: tg, target: '_blank', rel: 'noopener noreferrer', 'data-k': 'sendTelegram', onclick: mark }, t('sendTelegram')),
+  ];
+  if (navigator.share && !window.claude) {
+    buttons.push(
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'btn',
+          'data-k': 'share',
+          onclick: async () => {
+            try {
+              await navigator.share({ title: 'Pocket Time', text: t('recoveryTelegram'), url: link });
+              mark();
+            } catch (_) {}
+          },
+        },
+        t('shareOther'),
+      ),
+    );
+  }
+  buttons.push(copy);
+  return h('div', { class: 'send-row' }, buttons);
+}
+
 function settingsSheet() {
   const s = ui.sheet;
-  if (s.sub) return securitySub(s.sub);
+  if (s.sub) return settingsSub(s.sub);
   const status = engine ? engine.status() : { state: 'local' };
   const rows = [];
 
@@ -1056,34 +1109,48 @@ function settingsSheet() {
     ),
   );
 
-  const syncKids = [h('span', { class: 'field-label' }, t('sync')), h('p', { class: 'prose' }, vault.mode === 'sync' ? t('syncOn') : t('syncLocal'))];
-  if (vault.mode === 'sync' && engine && engine.lastSync) {
+  const sync = [h('span', { class: 'field-label' }, t('sync'))];
+  const remote = vault.remote;
+  if (remote && remote.kind === 'github') sync.push(h('p', { class: 'prose', dir: 'auto' }, t('syncGithub', { repo: remote.repo })));
+  else if (remote && remote.kind === 'claude') sync.push(h('p', { class: 'prose' }, t('syncClaude')));
+  else sync.push(h('p', { class: 'prose' }, t('syncLocal')));
+  if (remote && engine && engine.lastSync) {
     const d = new Date(engine.lastSync);
-    syncKids.push(h('p', { class: 'prose tnum' }, t('lastSync', { time: `${nowTime(d)} ${formatDateShort(dayKey(d))}` })));
+    sync.push(h('p', { class: 'prose tnum' }, t('lastSync', { time: `${nowTime(d)} ${formatDateShort(dayKey(d))}` })));
   }
-  if (vault.mode === 'sync' && status.state !== 'synced') {
-    const text = status.state === 'locked' ? t('statusLocked') : status.state === 'offline' || !engine.remote ? t('statusOffline') : t('statusSyncing');
-    syncKids.push(h('p', { class: 'prose' }, text));
+  const line = statusText();
+  if (line) sync.push(h('p', { class: 'prose' }, line));
+  if (vault.mismatch || status.state === 'locked') {
+    sync.push(h('button', { type: 'button', class: 'btn primary', 'data-k': 'sub-pair', onclick: () => setSub('pair') }, t('haveLink')));
   }
-  if (vault.mode === 'local' && vault.db) {
-    syncKids.push(h('button', { type: 'button', class: 'btn primary', 'data-k': 'enableSync', onclick: () => (closeSheet(), startSyncFlow()) }, t('syncEnable')));
+  if (!remote && !vault.mismatch) {
+    sync.push(h('button', { type: 'button', class: 'btn primary', 'data-k': 'sub-github', onclick: () => setSub('github') }, t('syncEnable')));
   }
-  rows.push(h('div', { class: 'field' }, syncKids));
-
-  if (vault.mode === 'sync' && vault.remote) {
-    rows.push(
+  if (remote && remote.kind === 'github') {
+    sync.push(
       h(
         'div',
-        { class: 'field' },
-        h('span', { class: 'field-label' }, t('security')),
-        h('button', { type: 'button', class: 'settings-row link', 'data-k': 'sub-pass', onclick: () => setSub('pass') }, t('changePass'), chevron(true)),
-        h('button', { type: 'button', class: 'settings-row link', 'data-k': 'sub-rec', onclick: () => setSub('recovery') }, t('newRecovery'), chevron(true)),
-        h('button', { type: 'button', class: 'settings-row link', 'data-k': 'sub-lock', onclick: () => setSub('lock') }, t('lockDevice'), chevron(true)),
+        { class: 'chips' },
+        h('button', { type: 'button', class: 'chip', 'data-k': 'changeToken', onclick: () => setSub('github') }, t('changeToken')),
+        h('button', { type: 'button', class: 'chip', 'data-k': 'stopSync', onclick: stopSync }, t('stopSync')),
       ),
     );
   }
+  rows.push(h('div', { class: 'field' }, sync));
 
-  if (vault.downloads && engine) {
+  rows.push(
+    h(
+      'div',
+      { class: 'field' },
+      h('span', { class: 'field-label' }, t('recovery')),
+      h('p', { class: 'prose' }, t('recoveryHint')),
+      vault.data.recoverySent ? null : h('p', { class: 'note overlap-note' }, t('recoveryNotSent')),
+      sendButtons(),
+      h('button', { type: 'button', class: 'settings-row link', 'data-k': 'sub-pair2', onclick: () => setSub('pair') }, t('haveLink'), chevron(true)),
+    ),
+  );
+
+  if (engine) {
     rows.push(
       h(
         'div',
@@ -1091,6 +1158,7 @@ function settingsSheet() {
         h('span', { class: 'field-label' }, t('export')),
         h('p', { class: 'prose' }, t('exportHint')),
         h('button', { type: 'button', class: 'btn', 'data-k': 'export', onclick: exportData }, t('export')),
+        h('button', { type: 'button', class: 'settings-row link', 'data-k': 'sub-forget', onclick: () => setSub('forget') }, t('forgetDevice'), chevron(true)),
       ),
     );
   }
@@ -1103,8 +1171,7 @@ function setSub(sub) {
   ui.sheet.sub = sub;
   ui.sheet.static = true;
   $('sheet').replaceChildren(...settingsSheet());
-  const f = $('sheet').querySelector('input');
-  if (f) f.focus();
+  $('sheet').scrollTop = 0;
 }
 
 function backToSettings() {
@@ -1113,8 +1180,9 @@ function backToSettings() {
   renderSheet(true);
 }
 
-function passwordInput(id, label, autocomplete) {
-  const el = h('input', { id, class: 'text-input', type: 'password', autocomplete, spellcheck: 'false', autocapitalize: 'off', dir: 'auto' });
+function textInput(id, label, opts = {}) {
+  const el = h('input', { id, class: 'text-input', type: opts.type || 'text', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', dir: 'ltr', placeholder: opts.placeholder || null });
+  if (opts.value) el.value = opts.value;
   bindDigitNormalization(el);
   return h('label', null, label, el);
 }
@@ -1135,95 +1203,140 @@ function busyButton(btn, fn) {
   };
 }
 
-function securitySub(sub) {
-  const err = h('p', { class: 'error', role: 'alert', hidden: true });
+function normalizeRepo(input) {
+  const s = normalizeDigits(String(input || '')).trim().replace(/\.git$/, '').replace(/\/+$/, '');
+  const m = s.match(/^(?:https?:\/\/github\.com\/)?([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+function pairForm(onDone) {
+  const err = errorLine();
+  const area = h('textarea', { id: 'pairInput', class: 'text-input pair-input', rows: '3', dir: 'ltr', spellcheck: 'false', autocapitalize: 'off', placeholder: 'https://…#pair=…' });
+  const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('pairButton'));
+  const form = h('form', { class: 'gate-inner' }, h('label', null, t('pairLabel'), area), err, btn);
+  form.addEventListener(
+    'submit',
+    busyButton(btn, async () => {
+      const p = decodePairing(area.value);
+      if (!p) {
+        err.textContent = t('pairBad');
+        err.hidden = false;
+        return;
+      }
+      await applyPairing(p);
+      toast(t('paired'));
+      onDone();
+    }),
+  );
+  return form;
+}
+
+function settingsSub(sub) {
+  const back = h('button', { type: 'button', class: 'text-btn quiet', onclick: backToSettings }, t('back'));
+  const err = errorLine();
   const fail = (msg) => {
     err.textContent = msg;
     err.hidden = false;
   };
-  const back = h('button', { type: 'button', class: 'text-btn quiet', onclick: backToSettings }, t('back'));
 
-  if (sub === 'pass') {
-    const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('save'));
+  if (sub === 'github') {
+    const current = vault.data.sync && vault.data.sync.type === 'github' ? vault.data.sync : null;
+    const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('connect'));
     const form = h(
       'form',
       { class: 'gate-inner' },
-      passwordInput('oldPass', t('oldPass'), 'current-password'),
-      passwordInput('newPass1', t('newPass'), 'new-password'),
-      passwordInput('newPass2', t('passConfirm'), 'new-password'),
-      h('p', { class: 'note' }, t('passTip')),
+      h(
+        'ol',
+        { class: 'steps prose' },
+        h('li', null, t('githubStep1'), ' ', h('a', { href: NEW_REPO_URL, target: '_blank', rel: 'noopener noreferrer' }, t('githubStep1Link'))),
+        h('li', null, t('githubStep2'), ' ', h('a', { href: TOKEN_URL, target: '_blank', rel: 'noopener noreferrer' }, t('githubStep2Link'))),
+        h('li', null, t('githubStep3')),
+      ),
+      textInput('ghRepo', t('repoLabel'), { placeholder: 'newSaleh/pocket-time-data', value: current ? current.repo : '' }),
+      textInput('ghToken', t('tokenLabel'), { type: 'password', placeholder: 'github_pat_…' }),
       err,
       btn,
     );
     form.addEventListener(
       'submit',
       busyButton(btn, async () => {
-        const p1 = $('newPass1').value;
-        if (normalizePassphrase(p1).length < 10) return fail(t('passTooShort'));
-        if (normalizePassphrase(p1) !== normalizePassphrase($('newPass2').value)) return fail(t('passMismatch'));
+        const repo = normalizeRepo($('ghRepo').value);
+        const token = $('ghToken').value.trim() || (current && current.repo === repo ? current.token : '');
+        if (!repo) return fail(t('errRepo'));
+        if (!token) return fail(t('errToken'));
         try {
-          const keyring = await vault.remote.getKeyring();
-          const next = await changePassphrase(keyring, $('oldPass').value, p1);
-          await vault.remote.saveKeyring(next);
-          backToSettings();
-          toast(t('passChanged'));
+          const remote = githubRemote({ repo, token });
+          const result = await remote.ensureVault(vault.data.kid);
+          if (result === 'mismatch') {
+            fail(t('repoHasVault'));
+            err.after(h('button', { type: 'button', class: 'btn block', onclick: () => setSub('pair') }, t('haveLink')));
+            return;
+          }
+          vault.data.sync = { type: 'github', repo, token };
+          await saveVault();
+          attachRemote(remote, true);
+          setSub('syncReady');
         } catch (e) {
-          fail(e && e.code === 'wrong-secret' ? t('wrongPass') : t('errorGeneric'));
+          const code = e && e.code;
+          fail(code === 'auth' ? t('errToken') : code === 'not_found' ? t('errRepo') : code === 'public_repo' ? t('errPublic') : t('errNetwork'));
         }
       }),
     );
-    return [sheetHead(t('changePass'), back), form];
+    return [sheetHead(t('githubTitle'), back), form];
   }
 
-  if (sub === 'recovery') {
-    const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('newRecovery'));
-    const form = h('form', { class: 'gate-inner' }, passwordInput('recPass', t('passLabel'), 'current-password'), err, btn);
-    form.addEventListener(
-      'submit',
-      busyButton(btn, async () => {
-        try {
-          const keyring = await vault.remote.getKeyring();
-          const { keyring: next, recoveryCode } = await newRecoveryCode(keyring, $('recPass').value);
-          await vault.remote.saveKeyring(next);
-          $('sheet').replaceChildren(sheetHead(t('recoveryTitle')), recoveryCodeView(recoveryCode, backToSettings));
-        } catch (e) {
-          fail(e && e.code === 'wrong-secret' ? t('wrongPass') : t('errorGeneric'));
-        }
-      }),
-    );
-    return [sheetHead(t('newRecovery'), back), form];
+  if (sub === 'syncReady') {
+    return [
+      sheetHead(t('syncReadyTitle')),
+      h('div', { class: 'gate-inner' }, h('p', { class: 'prose' }, t('syncReadyBody')), sendButtons()),
+    ];
   }
 
-  // lock
-  const btn = h('button', { type: 'button', class: 'btn primary block' }, t('lockConfirm'));
+  if (sub === 'pair') {
+    return [sheetHead(t('pairTitle'), back), h('p', { class: 'prose' }, t('pairHint')), pairForm(closeSheet)];
+  }
+
+  // forget this device
+  const btn = h('button', { type: 'button', class: 'btn primary block' }, t('forgetConfirm'));
   btn.addEventListener(
     'click',
     busyButton(btn, async () => {
       if (engine) {
         await engine.flush();
-        if (engine.dirty.size) return fail(t('lockPending'));
+        if (engine.remote && engine.dirty.size) return fail(t('lockPending'));
         engine.stop();
       }
       await store.clear();
       prefs.set('draft', '');
       input().value = '';
       engine = null;
+      vault.remote = null;
+      vault.data = null;
       closeSheet();
       boot();
     }),
   );
-  return [sheetHead(t('lockDevice'), back), h('div', { class: 'gate-inner' }, h('p', { class: 'prose' }, t('lockHint')), err, btn)];
+  return [sheetHead(t('forgetDevice'), back), h('div', { class: 'gate-inner' }, h('p', { class: 'prose' }, t('forgetHint')), err, btn)];
 }
 
 async function exportData() {
-  if (!vault.downloads || !engine) return;
-  try {
-    const data = JSON.stringify({ app: 'Pocket Time', exported: new Date().toISOString(), tasks: engine.exportPlain() }, null, 2);
-    const res = await vault.downloads.save({ filename: `pocket-time-${todayKey()}.json`, data });
-    if (res && res.status === 'saved') toast(t('exportDone'));
-  } catch (_) {
-    // Declined or unavailable: nothing to do.
+  if (!engine) return;
+  const data = JSON.stringify({ app: 'Pocket Time', exported: new Date().toISOString(), tasks: engine.exportPlain() }, null, 2);
+  const filename = `pocket-time-${todayKey()}.json`;
+  if (vault.downloads) {
+    try {
+      const res = await vault.downloads.save({ filename, data });
+      if (res && res.status === 'saved') toast(t('exportDone'));
+    } catch (_) {}
+    return;
   }
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  const a = h('a', { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast(t('exportDone'));
 }
 
 function setLang(code) {
@@ -1234,14 +1347,12 @@ function setLang(code) {
 }
 
 // ---------------------------------------------------------------------------
-// Vault screens (first run on a device)
+// Full-screen notice: only when this device meets synced tasks it cannot read.
 
 function showGate(...kids) {
   const gate = $('gate');
   gate.replaceChildren(h('div', { class: 'gate-inner' }, h('span', { class: 'brand' }, t('appName')), ...kids));
   gate.hidden = false;
-  const f = gate.querySelector('input');
-  if (f) f.focus();
 }
 
 function hideGate() {
@@ -1253,198 +1364,12 @@ function errorLine() {
   return h('p', { class: 'error', role: 'alert', hidden: true });
 }
 
-function langSwitch() {
-  const other = ui.lang === 'ar' ? ['en', 'English'] : ['ar', 'العربية'];
-  return h(
-    'button',
-    {
-      type: 'button',
-      class: 'link',
-      lang: other[0],
-      onclick: () => {
-        setLang(other[0]);
-        boot();
-      },
-    },
-    other[1],
-  );
-}
-
-function gateLoading() {
-  showGate(h('p', { class: 'prose' }, t('loading')));
-}
-
-function gateNoSync() {
+function gatePair() {
   showGate(
-    h('h1', null, t('noSyncTitle')),
-    h('p', { class: 'prose' }, t('noSyncBody')),
-    h('button', { type: 'button', class: 'btn primary block', onclick: () => location.reload() }, t('retry')),
-    h('button', { type: 'button', class: 'btn block', onclick: startLocalVault }, t('useLocal')),
-    langSwitch(),
-  );
-}
-
-function gateSetup() {
-  const err = errorLine();
-  const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('createVault'));
-  const form = h(
-    'form',
-    { class: 'gate-inner' },
-    passwordInput('pass1', t('passLabel'), 'new-password'),
-    passwordInput('pass2', t('passConfirm'), 'new-password'),
-    h('p', { class: 'note' }, t('passTip')),
-    err,
-    btn,
-  );
-  form.addEventListener(
-    'submit',
-    busyButton(btn, async () => {
-      const fail = (m) => ((err.textContent = m), (err.hidden = false));
-      const p1 = $('pass1').value;
-      if (normalizePassphrase(p1).length < 10) return fail(t('passTooShort'));
-      if (normalizePassphrase(p1) !== normalizePassphrase($('pass2').value)) return fail(t('passMismatch'));
-      try {
-        const { keyring, dek, recoveryCode } = await createKeyring(p1);
-        const inForce = await vault.remote.createKeyring(keyring);
-        if (inForce.kid !== keyring.kid) {
-          // Another device created the vault first: unlock that one instead.
-          gateUnlock(inForce);
-          return;
-        }
-        await openVault({ dek, kid: keyring.kid, mode: 'sync' });
-        showGate(h('h1', null, t('recoveryTitle')), recoveryCodeView(recoveryCode, hideGate));
-      } catch (e) {
-        fail(e && e.code === 'busy' ? t('errorBusy') : t('errorGeneric'));
-      }
-    }),
-  );
-  showGate(h('h1', null, t('setupTitle')), h('p', { class: 'prose' }, t('setupBody')), form, langSwitch());
-}
-
-function recoveryCodeView(code, onDone) {
-  const copyBtn = h('button', { type: 'button', class: 'btn' }, t('copy'));
-  copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      copyBtn.textContent = t('copied');
-    } catch (_) {
-      const range = document.createRange();
-      range.selectNodeContents(codeEl);
-      const sel = getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-  });
-  const codeEl = h('div', { class: 'code', translate: 'no' }, code);
-  const box = h('input', { type: 'checkbox', id: 'savedIt' });
-  const go = h('button', { type: 'button', class: 'btn primary block', disabled: true, onclick: onDone }, t('begin'));
-  box.addEventListener('change', () => (go.disabled = !box.checked));
-  return h(
-    'div',
-    { class: 'gate-inner' },
-    h('p', { class: 'prose' }, t('recoveryBody')),
-    codeEl,
-    copyBtn,
-    h('label', { class: 'check-line' }, box, t('savedIt')),
-    go,
-  );
-}
-
-function gateUnlock(keyring) {
-  const err = errorLine();
-  const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('unlock'));
-  const form = h('form', { class: 'gate-inner' }, passwordInput('unlockPass', t('passLabel'), 'current-password'), err, btn);
-  form.addEventListener(
-    'submit',
-    busyButton(btn, async () => {
-      try {
-        const dek = await unlockWithPassphrase(keyring, $('unlockPass').value);
-        await openVault({ dek, kid: keyring.kid, mode: 'sync' });
-        hideGate();
-      } catch (e) {
-        err.textContent = e && e.code === 'wrong-secret' ? t('wrongPass') : t('errorGeneric');
-        err.hidden = false;
-      }
-    }),
-  );
-  showGate(
-    h('h1', null, t('unlockTitle')),
-    h('p', { class: 'prose' }, t('unlockBody')),
-    form,
-    h('button', { type: 'button', class: 'link', onclick: () => gateRecover(keyring) }, t('forgot')),
-    langSwitch(),
-  );
-}
-
-function gateRecover(keyring) {
-  const err = errorLine();
-  const codeInput = h('input', { id: 'recCode', class: 'text-input tnum', type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', dir: 'ltr' });
-  bindDigitNormalization(codeInput);
-  const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('recover'));
-  const form = h(
-    'form',
-    { class: 'gate-inner' },
-    h('label', null, t('recoveryLabel'), codeInput),
-    passwordInput('recNew1', t('newPass'), 'new-password'),
-    passwordInput('recNew2', t('passConfirm'), 'new-password'),
-    err,
-    btn,
-  );
-  form.addEventListener(
-    'submit',
-    busyButton(btn, async () => {
-      const fail = (m) => ((err.textContent = m), (err.hidden = false));
-      const p1 = $('recNew1').value;
-      if (normalizePassphrase(p1).length < 10) return fail(t('passTooShort'));
-      if (normalizePassphrase(p1) !== normalizePassphrase($('recNew2').value)) return fail(t('passMismatch'));
-      try {
-        const { keyring: next, dek } = await recoverWithCode(keyring, codeInput.value, p1);
-        await vault.remote.saveKeyring(next);
-        await openVault({ dek, kid: next.kid, mode: 'sync' });
-        hideGate();
-        toast(t('passChanged'));
-      } catch (e) {
-        fail(e && e.code === 'wrong-secret' ? t('wrongCode') : t('errorGeneric'));
-      }
-    }),
-  );
-  showGate(
-    h('h1', null, t('recoverTitle')),
-    h('p', { class: 'prose' }, t('recoverBody')),
-    form,
-    h('button', { type: 'button', class: 'link', onclick: () => gateUnlock(keyring) }, t('back')),
-    h('button', { type: 'button', class: 'link', onclick: gateReset }, t('lostBoth')),
-  );
-}
-
-function gateReset() {
-  const err = errorLine();
-  const word = h('input', { id: 'resetWord', class: 'text-input', type: 'text', autocomplete: 'off', dir: 'auto' });
-  const btn = h('button', { type: 'submit', class: 'btn primary block' }, t('resetConfirm'));
-  const form = h('form', { class: 'gate-inner' }, h('label', null, t('resetTypeHint'), word), err, btn);
-  form.addEventListener(
-    'submit',
-    busyButton(btn, async () => {
-      if (word.value.trim() !== t('resetWord')) {
-        err.textContent = t('resetTypeHint');
-        err.hidden = false;
-        return;
-      }
-      try {
-        await vault.remote.wipe();
-        await store.clear();
-        boot();
-      } catch (_) {
-        err.textContent = t('errorGeneric');
-        err.hidden = false;
-      }
-    }),
-  );
-  showGate(
-    h('h1', null, t('resetTitle')),
-    h('p', { class: 'prose' }, t('resetBody')),
-    form,
-    h('button', { type: 'button', class: 'link', onclick: () => boot() }, t('back')),
+    h('h1', null, t('mismatchTitle')),
+    h('p', { class: 'prose' }, t('mismatchBody')),
+    pairForm(hideGate),
+    h('button', { type: 'button', class: 'link', onclick: hideGate }, t('continueLocal')),
   );
 }
 
@@ -1460,63 +1385,57 @@ async function getDeviceId() {
   return id;
 }
 
-async function startEngine({ dek, kid, mode }) {
+async function saveVault() {
+  await store.put('kv', 'vault', vault.data);
+}
+
+async function startEngine(dek, kid) {
   const deviceId = await getDeviceId();
   if (engine) engine.stop();
-  engine = new SyncEngine({
-    store,
-    remote: mode === 'sync' ? vault.remote : null,
-    dek,
-    kid,
-    deviceId,
-    onKeyMismatch: () => {
-      render();
-      if (vault.remote) vault.remote.getKeyring().then((k) => k && gateUnlock(k));
-    },
-  });
-  vault.mode = mode;
-  vault.kid = kid;
+  engine = new SyncEngine({ store, remote: null, dek, kid, deviceId, onKeyMismatch: render });
   await engine.load();
   engine.onChange(render);
-  if (engine.remote) engine.start();
   render();
 }
 
-// Saves the key on this device and opens the vault. When a device-only vault
-// is joining sync, its tasks are re-encrypted with the synced key.
-async function openVault({ dek, kid, mode }) {
-  const saved = await store.get('kv', 'vault');
-  const joining = engine && vault.mode === 'local' && mode === 'sync';
-  if (!joining && saved && saved.kid !== kid) {
-    for (const [id] of await store.entries('buckets')) await store.del('buckets', id);
-  }
-  await store.put('kv', 'vault', { mode, kid, dek, uid: vault.uid });
-  if (joining) {
-    await engine.adoptKey(dek, kid, vault.remote);
-    vault.mode = 'sync';
-    vault.kid = kid;
-    engine.start();
-    render();
-    return;
-  }
-  await startEngine({ dek, kid, mode });
+function attachRemote(remote, uploadAll = false) {
+  vault.remote = remote;
+  vault.mismatch = false;
+  if (!engine) return;
+  engine.stop();
+  engine.remote = remote;
+  engine.flushDelay = remote.kind === 'github' ? 1500 : 300;
+  engine.failures = 0;
+  engine.lastError = null;
+  if (uploadAll) for (const id of engine.buckets.keys()) engine.dirty.add(id);
+  engine.start();
+  render();
 }
 
-async function startLocalVault() {
-  const { dek, kid } = await createLocalKey();
-  await openVault({ dek, kid, mode: 'local' });
+function stopSync() {
+  vault.data.sync = null;
+  saveVault();
+  if (engine) {
+    engine.stop();
+    engine.remote = null;
+  }
+  vault.remote = null;
+  renderSheet(true);
+  render();
+}
+
+// Joins the vault in a recovery link. Tasks already on this device are kept:
+// they are re-encrypted with the joined vault's key and merged into it.
+async function applyPairing(p) {
+  const same = vault.data && vault.data.kid === p.kid;
+  const sync = p.sync || (same ? vault.data.sync : null);
+  if (!same && engine) await engine.adoptKey(await importVaultKey(p.key), p.kid, null);
+  vault.data = { key: p.key, kid: p.kid, sync, recoverySent: true };
+  await saveVault();
+  if (!engine) await startEngine(await importVaultKey(p.key), p.kid);
+  vault.mismatch = false;
   hideGate();
-}
-
-async function startSyncFlow() {
-  if (!vault.remote) return;
-  try {
-    const keyring = await vault.remote.getKeyring();
-    if (keyring) gateUnlock(keyring);
-    else gateSetup();
-  } catch (_) {
-    showGate(h('p', { class: 'error' }, t('errorGeneric')), h('button', { type: 'button', class: 'btn primary block', onclick: () => boot() }, t('retry')));
-  }
+  await connectSync(true);
 }
 
 function withTimeout(promise, ms) {
@@ -1540,6 +1459,33 @@ async function connectClaude() {
   }
 }
 
+// Picks the sync server: the user's GitHub repository when set up, otherwise
+// the claude.ai database when the page runs inside claude.ai.
+async function connectSync(uploadAll = false) {
+  const cfg = vault.data && vault.data.sync;
+  let remote = null;
+  if (cfg && cfg.type === 'github') remote = githubRemote({ repo: cfg.repo, token: cfg.token });
+  else {
+    const conn = await connectClaude();
+    if (conn) remote = claudeRemote(conn.db, conn.uid);
+  }
+  if (!remote) return;
+  let result = null;
+  try {
+    result = await remote.ensureVault(vault.data.kid);
+  } catch (e) {
+    // Offline or a server hiccup: the vault was checked when sync was set up.
+    if (remote.kind === 'claude') return;
+  }
+  if (result === 'mismatch') {
+    vault.mismatch = true;
+    render();
+    if (engine && engine.tasks().length === 0) gatePair();
+    return;
+  }
+  attachRemote(remote, uploadAll || result === 'created');
+}
+
 async function boot() {
   hideGate();
   if (!store) {
@@ -1550,47 +1496,43 @@ async function boot() {
       storageWarning = true;
     }
   }
-  const saved = await store.get('kv', 'vault').catch(() => null);
+  let data = await store.get('kv', 'vault').catch(() => null);
+  const legacy = data && !data.key && data.dek ? data : null;
+  if (!data || !data.key) {
+    data = { ...newVault(), sync: null, recoverySent: false };
+    await store.put('kv', 'vault', data);
+  }
+  vault.data = data;
 
-  // A device that already holds the key opens straight from its local copy;
-  // the server connection attaches when it is ready.
-  if (saved && saved.dek && saved.kid) {
-    vault.uid = saved.uid || null;
-    await startEngine({ dek: saved.dek, kid: saved.kid, mode: saved.mode });
+  if (legacy) {
+    // Data from the earlier passphrase version: re-encrypt it with the new key.
+    await startEngine(legacy.dek, legacy.kid);
+    await engine.adoptKey(await importVaultKey(data.key), data.kid, null);
+  } else {
+    await startEngine(await importVaultKey(data.key), data.kid);
   }
 
-  const loadingTimer = setTimeout(() => !saved && gateLoading(), 400);
-  const conn = await connectClaude();
-  clearTimeout(loadingTimer);
-  vault.dbChecked = true;
-  vault.db = conn ? conn.db : null;
+  if (await pairFromAddress()) return;
+  await connectSync(false);
+}
 
-  if (conn) {
-    if (saved && saved.uid && saved.uid !== conn.uid) {
-      // A different account on this browser: start clean.
-      if (engine) engine.stop();
-      engine = null;
-      await store.clear();
-      return boot();
-    }
-    vault.uid = conn.uid;
-    vault.remote = claudeRemote(conn.db, conn.uid);
-  }
+// A recovery link opened in this tab ("...#pair=..."): join that vault and
+// take the secret out of the address bar right away.
+async function pairFromAddress() {
+  const pairing = /[#&]pair=/.test(location.hash) ? decodePairing(location.hash) : null;
+  if (!pairing) return false;
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (_) {}
+  await applyPairing(pairing);
+  toast(t('paired'));
+  return true;
+}
 
-  if (saved && saved.dek) {
-    if (saved.mode === 'sync' && vault.remote && engine && !engine.remote) {
-      engine.remote = vault.remote;
-      engine.start();
-    }
-    render();
-    return;
-  }
-
-  if (!vault.remote) {
-    gateNoSync();
-    return;
-  }
-  startSyncFlow();
+function registerServiceWorker() {
+  if (window.claude || !('serviceWorker' in navigator)) return;
+  if (!/^https:$/.test(location.protocol) && location.hostname !== 'localhost') return;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -1678,7 +1620,13 @@ function setupEvents() {
     vv.addEventListener('resize', fit);
   }
 
-  window.addEventListener('online', () => engine && engine.flush());
+  window.addEventListener('hashchange', () => engine && pairFromAddress());
+  window.addEventListener('online', () => {
+    if (engine) {
+      engine.flush();
+      engine.refresh();
+    }
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') tick();
     else saveOpenEdits();
@@ -1702,7 +1650,10 @@ function tick() {
     if (ui.day === ui.lastToday) ui.day = today;
     ui.lastToday = today;
   }
-  if (engine) engine.flush();
+  if (engine) {
+    engine.flush();
+    if (document.visibilityState === 'visible') engine.refresh();
+  }
   render();
 }
 
@@ -1710,4 +1661,5 @@ applyLang();
 setupComposer();
 setupEvents();
 render();
+registerServiceWorker();
 boot();

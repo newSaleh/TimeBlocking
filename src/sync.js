@@ -40,7 +40,7 @@ export function cleanNotes(s) {
 }
 
 export class SyncEngine {
-  constructor({ store, remote, dek, kid, deviceId, now = () => Date.now(), onKeyMismatch }) {
+  constructor({ store, remote, dek, kid, deviceId, now = () => Date.now(), onKeyMismatch, flushDelay = 300 }) {
     this.store = store;
     this.remote = remote || null;
     this.dek = dek;
@@ -63,6 +63,8 @@ export class SyncEngine {
     this.unsubscribe = null;
     this.stopped = false;
     this.keyMismatch = false;
+    this.lastError = null;
+    this.flushDelay = flushDelay;
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -89,7 +91,7 @@ export class SyncEngine {
       (changes) => {
         this.remoteQueue = this.remoteQueue.then(() => this._applyRemote(changes)).catch(() => {});
       },
-      (err) => this._onSubscribeError(err),
+      (err, info) => this._onSubscribeError(err, info),
     );
     this.flush();
   }
@@ -101,7 +103,12 @@ export class SyncEngine {
     clearTimeout(this.flushTimer);
   }
 
-  _onSubscribeError(err) {
+  _onSubscribeError(err, info) {
+    if (info && info.fatal === false) {
+      this.lastError = err && err.code;
+      this._emit();
+      return;
+    }
     this.unsubscribe = null;
     this.failures++;
     this._emit();
@@ -262,11 +269,16 @@ export class SyncEngine {
     if (this.keyMismatch) return { state: 'locked' };
     if (!this.remote) return { state: 'local' };
     if (this.dirty.size === 0 && this.failures === 0) return { state: 'synced', lastSync: this.lastSync };
+    if (this.lastError === 'auth') return { state: 'auth', pending: this.dirty.size };
     if (this.failures > 0) return { state: 'offline', pending: this.dirty.size };
     return { state: 'syncing', pending: this.dirty.size };
   }
 
-  scheduleFlush(delay = 300) {
+  refresh() {
+    if (this.remote && this.remote.refresh) this.remote.refresh();
+  }
+
+  scheduleFlush(delay = this.flushDelay) {
     if (!this.remote) return;
     clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => this.flush(), delay);
@@ -291,9 +303,19 @@ export class SyncEngine {
       this.remoteCanon.set(id, canon);
       if (stableStringify(this.buckets.get(id)) === canon) this.dirty.delete(id);
       this.failures = 0;
+      this.lastError = null;
       this.lastSync = this.now();
       this._persist(id);
-    } catch (_) {
+    } catch (e) {
+      if (e && e.code === 'conflict') {
+        // Another device wrote first: merge its version, then push again.
+        if (e.latest) await this._applyRemote([{ id, body: e.latest }]);
+        this.inflight.delete(id);
+        this.dirty.add(id);
+        this.scheduleFlush(50);
+        return;
+      }
+      this.lastError = (e && e.code) || 'unavailable';
       this.failures++;
       clearTimeout(this.retryTimer);
       this.retryTimer = setTimeout(() => this.flush(), Math.min(30000, 1000 * 2 ** Math.min(this.failures, 5)));
@@ -333,6 +355,7 @@ export class SyncEngine {
     }
     if (touched) {
       if (this.dirty.size === 0) this.failures = 0;
+      if (this.lastError === 'auth') this.lastError = null;
       this.lastSync = this.now();
       this._emit();
       this.scheduleFlush();

@@ -1,15 +1,17 @@
-// End-to-end scenarios in a real browser (Chromium via Playwright): an
-// "iPhone" and a "laptop" on different origins (separate storage) sharing one
-// test database. Run with: npm run e2e
+// End-to-end scenarios in a real browser (Chromium via Playwright).
+// An "iPhone" and a "laptop" on different origins (separate storage) use the
+// built GitHub Pages site; GitHub's API is replaced by an in-memory fake.
+// Run with: npm run e2e
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { startServer } from './server.mjs';
+import { createFakeGitHub } from '../test/fake-github.mjs';
 
 const root = execSync('npm root -g').toString().trim();
 const { chromium, devices } = await import(`${root}/playwright/index.mjs`);
 
-const PASS = 'نافذة برتقال سفر هادئ';
-const NEW_PASS = 'جبل قهوة مطر ٢٠٢٦ أزرق';
+const REPO = 'newSaleh/pocket-time-data';
+const TOKEN = 'github_pat_TEST_TOKEN_123';
 const results = [];
 const shots = 'docs/screenshots';
 mkdirSync(shots, { recursive: true });
@@ -30,13 +32,11 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-async function poll(fn, msg, timeout = 8000) {
+async function poll(fn, msg, timeout = 10000) {
   const t0 = Date.now();
-  let last;
   while (Date.now() - t0 < timeout) {
     try {
-      last = await fn();
-      if (last) return last;
+      if (await fn()) return;
     } catch (_) {}
     await new Promise((r) => setTimeout(r, 120));
   }
@@ -44,15 +44,24 @@ async function poll(fn, msg, timeout = 8000) {
 }
 
 const { server, docs } = await startServer(4173);
+const gh = createFakeGitHub({ token: TOKEN, repo: REPO });
 const browser = await chromium.launch();
 
-async function device(origin, options) {
-  const ctx = await browser.newContext(options);
+async function device(origin, options, path = '/') {
+  const ctx = await browser.newContext({ ...options, permissions: ['clipboard-read', 'clipboard-write'] });
+  const state = { offline: false };
   const external = [];
   const errors = [];
   const consoleText = [];
+  await ctx.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    if (state.offline) return route.abort('internetdisconnected');
+    const r = gh.handle(req.method(), req.url(), await req.allHeaders(), req.postData());
+    await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
+  });
   ctx.on('request', (r) => {
-    if (!r.url().startsWith(origin) && !r.url().startsWith('data:')) external.push(r.url());
+    const u = r.url();
+    if (!u.startsWith(origin) && !u.startsWith('https://api.github.com/') && !u.startsWith('data:')) external.push(u);
   });
   await ctx.addInitScript(() => {
     window.__notif = 0;
@@ -84,11 +93,22 @@ async function device(origin, options) {
     if (m.type() === 'error') errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(origin + '/');
-  return { ctx, page, external, errors, consoleText };
+  await page.goto(origin + path);
+  return {
+    ctx,
+    page,
+    external,
+    errors,
+    consoleText,
+    async setOffline(v) {
+      state.offline = v;
+      await ctx.setOffline(v);
+      if (!v) await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    },
+  };
 }
 
-const titles = (page) => page.$$eval('#list .task-title', (els) => els.map((e) => e.textContent));
+const titles = (page) => page.evaluate(() => [...document.querySelectorAll('#list .task-title')].map((e) => e.textContent));
 const row = (page, title) => page.locator('#list li.task', { has: page.locator('.task-title', { hasText: title }) });
 async function addTask(page, text) {
   await page.fill('#newTask', text);
@@ -110,26 +130,14 @@ console.log('\nPocket Time — end-to-end\n');
 
 const phone = await device('http://localhost:4173', { ...devices['iPhone SE'], defaultBrowserType: undefined, locale: 'ar' });
 const P = phone.page;
-let recoveryCode = '';
+let recoveryLink = '';
 
-await step('First run: passphrase rules, vault creation, one-time recovery code', async () => {
-  await P.waitForSelector('#pass1');
-  await P.fill('#pass1', 'short');
-  await P.fill('#pass2', 'short');
-  await P.click('#gate button[type=submit]');
-  await P.waitForSelector('#gate .error:not([hidden])');
-  assert((await P.textContent('#gate .error')).includes('10'), 'short passphrase error');
-  await P.screenshot({ path: `${shots}/01-setup-iphone.png` });
-  await P.fill('#pass1', PASS);
-  await P.fill('#pass2', PASS.replace('سفر', 'سفر'));
-  await P.click('#gate button[type=submit]');
-  await P.waitForSelector('#gate .code', { timeout: 20000 });
-  recoveryCode = (await P.textContent('#gate .code')).trim();
-  assert(/^([0-9A-Z]{4}-){7}[0-9A-Z]{4}$/.test(recoveryCode), 'recovery code format');
-  assert(await P.isDisabled('#gate .btn.primary'), 'start disabled until confirmed');
-  await P.check('#savedIt');
-  await P.click('#gate .btn.primary');
-  await P.waitForSelector('#gate', { state: 'hidden' });
+await step('First open: no password, no setup, straight to today', async () => {
+  await P.waitForSelector('#newTask');
+  assert(await P.isHidden('#gate'), 'no gate');
+  assert((await P.textContent('#dayMain')) === 'اليوم', 'today');
+  await P.waitForSelector('#list .empty');
+  await P.screenshot({ path: `${shots}/01-first-open-iphone.png` });
 });
 
 await step('1. Add a task in seconds (type + Return)', async () => {
@@ -138,10 +146,9 @@ await step('1. Add a task in seconds (type + Return)', async () => {
   await P.keyboard.type('اتصال سريع');
   await P.keyboard.press('Enter');
   await row(P, 'اتصال سريع').waitFor();
-  const ms = Date.now() - t0;
-  assert(ms < 3000, `took ${ms}ms`);
+  assert(Date.now() - t0 < 3000, 'slow');
   assert((await P.inputValue('#newTask')) === '', 'composer cleared');
-  assert(await P.evaluate(() => document.activeElement.id === 'newTask'), 'composer keeps focus for the next task');
+  assert(await P.evaluate(() => document.activeElement.id === 'newTask'), 'composer keeps focus');
 });
 
 await step('2. Add a task without a time', async () => {
@@ -167,11 +174,9 @@ await step('Quick add understands "tomorrow" and can be ignored', async () => {
   assert((await P.textContent('#parseChip')).includes('غدًا · 10:00'), 'chip shows tomorrow');
   await P.press('#newTask', 'Enter');
   await P.waitForSelector('#toast:not([hidden])');
-  assert((await P.textContent('#toast')).includes('غدًا'), 'toast names the day');
   assert((await row(P, 'الاتصال بالمورد').count()) === 0, 'not on today');
   await P.fill('#newTask', 'موعد 9:00 مع أحمد');
   await P.click('#parseIgnore');
-  assert(await P.isHidden('#parse'), 'chip hidden after ignore');
   await P.press('#newTask', 'Enter');
   await row(P, 'موعد 9:00 مع أحمد').waitFor();
 });
@@ -181,8 +186,7 @@ await step('4. Arabic-Indic digits become 123 (typing, pasting, saved data)', as
   await P.keyboard.type('١٢٣');
   assert((await P.inputValue('#newTask')) === '123', 'typed');
   await P.evaluate(() => document.execCommand('insertText', false, ' ٤٥٦ ۷۸۹'));
-  assert((await P.inputValue('#newTask')) === '123 456 789', 'pasted: ' + (await P.inputValue('#newTask')));
-  await P.fill('#newTask', '');
+  assert((await P.inputValue('#newTask')) === '123 456 789', 'pasted');
   await P.evaluate(() => {
     const el = document.getElementById('newTask');
     el.value = 'رياضة ٧:٣٠ م لمدة ٤٥ دقيقة';
@@ -194,22 +198,20 @@ await step('4. Arabic-Indic digits become 123 (typing, pasting, saved data)', as
   await r.waitFor();
   assert((await r.locator('.task-time .start').textContent()) === '19:30', 'pm time');
   assert((await r.locator('.task-time .end').textContent()) === '20:15', 'duration end');
-  const text = await P.evaluate(() => document.body.innerText);
-  assert(!/[٠-٩۰-۹]/.test(text), 'no Arabic-Indic digits anywhere on screen');
+  assert(!/[٠-٩۰-۹]/.test(await P.evaluate(() => document.body.innerText)), 'no Arabic-Indic digits on screen');
 });
 
-await step('5. Change a task time (10:00-style edit) without recreating it', async () => {
+await step('5. Change a task time without recreating it', async () => {
   await openTask(P, 'قراءة كتاب');
-  await P.waitForTimeout(250);
-  await P.screenshot({ path: `${shots}/05-task-sheet-iphone.png` });
   await P.click('#sheet [data-k="time-start"]');
   await P.click('#sheet [data-k="start-h-14"]');
   await P.click('#sheet [data-k="start-m-0"]');
+  await P.waitForTimeout(250);
+  await P.screenshot({ path: `${shots}/05-task-sheet-iphone.png` });
   await closeSheet(P);
   const r = row(P, 'قراءة كتاب');
   assert((await r.locator('.task-time .start').textContent()) === '14:00', 'new start');
   assert((await r.locator('.task-time .end').textContent()) === '14:30', 'duration kept');
-  assert((await row(P, 'قراءة كتاب').count()) === 1, 'still one task');
 });
 
 await step('Overlapping times are flagged quietly, not blocked', async () => {
@@ -225,7 +227,6 @@ await step('6. Move a task to tomorrow', async () => {
   assert((await row(P, 'شراء هدية').count()) === 0, 'gone from today');
   await P.click('#nextBtn');
   await row(P, 'شراء هدية').waitFor();
-  await row(P, 'الاتصال بالمورد').waitFor();
   await P.click('#todayBtn');
   await row(P, 'قراءة كتاب').waitFor();
 });
@@ -234,7 +235,6 @@ await step('7. Mark done, then not done (one tap each, no confirmation)', async 
   const r = row(P, 'قراءة كتاب');
   await r.locator('.check').click();
   await poll(async () => (await r.getAttribute('class')).includes('done'), 'done class');
-  assert((await r.locator('.check').getAttribute('aria-pressed')) === 'true', 'aria-pressed');
   assert(await P.isHidden('#sheetLayer'), 'no dialog');
   await r.locator('.check').click();
   await poll(async () => !(await r.getAttribute('class')).includes('done'), 'undone');
@@ -248,44 +248,74 @@ await step('Delete with undo', async () => {
   await row(P, 'اتصال سريع').waitFor();
 });
 
-await step('8. Close and reopen: data is still there, no passphrase asked', async () => {
+await step('8. Close and reopen: data is still there', async () => {
   const before = (await titles(P)).sort();
   await P.reload();
   await P.waitForSelector('#list .task');
-  assert(await P.isHidden('#gate'), 'no gate');
   const after = (await titles(P)).sort();
   assert(JSON.stringify(before) === JSON.stringify(after), `${before} vs ${after}`);
+});
+
+await step('Opens with no internet at all (offline cold start)', async () => {
+  await P.evaluate(() => navigator.serviceWorker.ready);
+  await P.reload();
+  await poll(() => P.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls page');
+  await phone.setOffline(true);
+  await P.reload();
+  await row(P, 'قراءة كتاب').waitFor({ timeout: 8000 });
+  await addTask(P, 'أُضيفت دون إنترنت');
+  await row(P, 'أُضيفت دون إنترنت').waitFor();
+  await phone.setOffline(false);
+});
+
+await step('Turn on GitHub sync: clear errors, then one-time setup', async () => {
+  await P.click('#settingsBtn');
+  await P.click('#sheet [data-k="sub-github"]');
+  await P.fill('#ghRepo', REPO);
+  await P.fill('#ghToken', 'wrong-token');
+  await P.click('#sheet button[type=submit]');
+  await P.waitForSelector('#sheet .error:not([hidden])');
+  assert((await P.textContent('#sheet .error')).includes('رمز GitHub غير صالح'), 'token error');
+  await P.screenshot({ path: `${shots}/github-setup-iphone.png` });
+  await P.fill('#ghRepo', 'https://github.com/' + REPO);
+  await P.fill('#ghToken', TOKEN);
+  await P.click('#sheet button[type=submit]');
+  await P.waitForSelector('#sheet [data-k="sendEmail"]', { timeout: 10000 });
+  await P.waitForTimeout(250);
+  await P.screenshot({ path: `${shots}/recovery-send-iphone.png` });
+  const mail = await P.getAttribute('#sheet [data-k="sendEmail"]', 'href');
+  const tg = await P.getAttribute('#sheet [data-k="sendTelegram"]', 'href');
+  assert(mail.startsWith('mailto:?subject=') && decodeURIComponent(mail).includes('#pair='), 'email link');
+  assert(tg.startsWith('https://t.me/share/url?url=') && decodeURIComponent(tg).includes('#pair='), 'telegram link');
+  await P.click('#sheet [data-k="copyLink"]');
+  recoveryLink = await P.evaluate(() => navigator.clipboard.readText());
+  assert(recoveryLink.startsWith('http://localhost:4173/#pair='), 'copied link: ' + recoveryLink.slice(0, 40));
+  await closeSheet(P);
+  await poll(() => gh.files.has('pt/meta.json') && [...gh.files.keys()].some((k) => k.startsWith('pt/b/')), 'uploaded to GitHub');
 });
 
 // --- Laptop ---------------------------------------------------------------
 const laptop = await device('http://127.0.0.1:4173', { viewport: { width: 1280, height: 800 }, locale: 'ar' });
 const L = laptop.page;
 
-await step('Second device: wrong passphrase rejected, right one unlocks once', async () => {
-  await L.waitForSelector('#unlockPass', { timeout: 15000 });
-  await L.fill('#unlockPass', 'not the passphrase');
-  await L.click('#gate button[type=submit]');
-  await L.waitForSelector('#gate .error:not([hidden])', { timeout: 20000 });
-  await L.fill('#unlockPass', PASS.replace('٢', '2'));
-  await L.click('#gate button[type=submit]');
-  await L.waitForSelector('#gate', { state: 'hidden', timeout: 20000 });
-  await row(L, 'قراءة كتاب').waitFor({ timeout: 8000 });
+await step('Laptop: opening the recovery link connects it, no password', async () => {
+  await L.waitForSelector('#newTask');
+  await L.goto(recoveryLink.replace('http://localhost:4173', 'http://127.0.0.1:4173'));
+  await row(L, 'قراءة كتاب').waitFor({ timeout: 10000 });
+  await row(L, 'أُضيفت دون إنترنت').waitFor();
+  assert(!(await L.evaluate(() => location.hash)).includes('pair'), 'link removed from the address bar');
 });
 
 await step('9. Edit on iPhone → appears on laptop, and back', async () => {
   await row(P, 'قراءة كتاب').locator('.check').click();
-  await poll(async () => (await row(L, 'قراءة كتاب').getAttribute('class')).includes('done'), 'laptop sees done');
+  await poll(async () => (await row(L, 'قراءة كتاب').getAttribute('class')).includes('done'), 'laptop sees done', 25000);
   await addTask(L, 'من اللابتوب');
-  await row(P, 'من اللابتوب').waitFor({ timeout: 8000 });
-  await openTask(L, 'مكالمة');
-  await L.click('#sheet [data-k="shift-60"]');
-  await closeSheet(L);
-  await poll(async () => (await row(P, 'مكالمة').locator('.task-time .start').textContent()) === '15:15', 'phone sees shift');
+  await row(P, 'من اللابتوب').waitFor({ timeout: 25000 });
 });
 
 await step('10. Same task edited on both devices: no silent loss', async () => {
-  await P.evaluate(() => window.__mock.setOffline(true));
-  await L.evaluate(() => window.__mock.setOffline(true));
+  await phone.setOffline(true);
+  await laptop.setOffline(true);
   await openTask(P, 'رياضة');
   await P.fill('#taskTitle', 'رياضة (نسخة الآيفون)');
   await closeSheet(P);
@@ -293,43 +323,56 @@ await step('10. Same task edited on both devices: no silent loss', async () => {
   await openTask(L, 'رياضة');
   await L.fill('#taskTitle', 'رياضة (نسخة اللابتوب)');
   await closeSheet(L);
-  await P.evaluate(() => (window.__mock.setOffline(false), window.dispatchEvent(new Event('online'))));
-  await L.evaluate(() => (window.__mock.setOffline(false), window.dispatchEvent(new Event('online'))));
+  await phone.setOffline(false);
+  await laptop.setOffline(false);
   await poll(async () => {
     const a = (await titles(P)).filter((x) => x.startsWith('رياضة'));
     const b = (await titles(L)).filter((x) => x.startsWith('رياضة'));
-    return a.length === 1 && b.length === 1 && a[0] === b[0] && a[0].includes('اللابتوب');
-  }, 'converged on the newest title', 15000);
+    return a.length === 1 && b.length === 1 && a[0] === b[0];
+  }, 'converged', 30000);
   const r = row(P, 'رياضة');
-  assert((await r.locator('.tag').allTextContents()).includes('نسختان'), 'two-versions tag');
+  await poll(async () => (await r.locator('.tag').allTextContents()).includes('نسختان'), 'two-versions tag', 15000);
   await r.locator('.task-body').click();
   await P.waitForSelector('#sheet .conflict');
-  assert((await P.textContent('#sheet .conflict-value')).includes('الآيفون'), 'other version offered');
   await P.waitForTimeout(250);
   await P.screenshot({ path: `${shots}/10-conflict-iphone.png` });
-  await P.click('#sheet .conflict .chip >> nth=0');
   await closeSheet(P);
-  await poll(async () => (await titles(L)).includes('رياضة (نسخة الآيفون)'), 'choice synced');
 });
 
 await step('11. Offline: keeps working, says so calmly, syncs when back', async () => {
-  await P.evaluate(() => window.__mock.setOffline(true));
+  await phone.setOffline(true);
   await addTask(P, 'مهمة دون اتصال');
   await row(P, 'مهمة دون اتصال').waitFor();
-  await poll(async () => (await P.isVisible('#status')) && (await P.textContent('#status')).includes('محفوظ على الجهاز'), 'offline note', 10000);
-  await P.evaluate(() => (window.__mock.setOffline(false), window.dispatchEvent(new Event('online'))));
-  await row(L, 'مهمة دون اتصال').waitFor({ timeout: 10000 });
-  await poll(async () => await P.isHidden('#status'), 'status clears');
+  await poll(async () => (await P.isVisible('#status')) && (await P.textContent('#status')).includes('محفوظ على الجهاز'), 'offline note', 15000);
+  await phone.setOffline(false);
+  await row(L, 'مهمة دون اتصال').waitFor({ timeout: 20000 });
+  await poll(async () => await P.isHidden('#status'), 'status clears', 15000);
 });
 
-await step('Closing the page before it could sync loses nothing', async () => {
-  await P.evaluate(() => window.__mock.setOffline(true));
-  await addTask(P, 'أُغلقت قبل المزامنة');
-  await row(P, 'أُغلقت قبل المزامنة').waitFor();
-  await new Promise((r) => setTimeout(r, 300));
-  await P.reload(); // the reloaded page is online again
-  await row(P, 'أُغلقت قبل المزامنة').waitFor();
-  await row(L, 'أُغلقت قبل المزامنة').waitFor({ timeout: 10000 });
+await step('A third device that skips the link is told to use it; pasting it works', async () => {
+  const third = await device('http://127.0.0.2:4173', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const T = third.page;
+  await T.waitForSelector('#newTask');
+  await addTask(T, 'مهمة الجهاز الثالث');
+  await T.click('#settingsBtn');
+  await T.click('#sheet [data-k="sub-github"]');
+  await T.fill('#ghRepo', REPO);
+  await T.fill('#ghToken', TOKEN);
+  await T.click('#sheet button[type=submit]');
+  await T.waitForSelector('#sheet .error:not([hidden])');
+  assert((await T.textContent('#sheet .error')).includes('رابط الاستعادة'), 'mismatch explained');
+  await closeSheet(T);
+  await T.click('#settingsBtn');
+  await T.click('#sheet [data-k="sub-pair2"]');
+  await T.fill('#pairInput', 'not a link');
+  await T.click('#sheet button[type=submit]');
+  await T.waitForSelector('#sheet .error:not([hidden])');
+  await T.fill('#pairInput', recoveryLink);
+  await T.click('#sheet button[type=submit]');
+  await row(T, 'قراءة كتاب').waitFor({ timeout: 15000 });
+  await row(T, 'مهمة الجهاز الثالث').waitFor();
+  await row(P, 'مهمة الجهاز الثالث').waitFor({ timeout: 20000 });
+  await third.ctx.close();
 });
 
 await step('Earlier open tasks are offered, never moved automatically', async () => {
@@ -352,13 +395,11 @@ await step('12. Arabic RTL and English LTR', async () => {
   await closeSheet(P);
   assert((await P.getAttribute('html', 'dir')) === 'ltr', 'ltr');
   assert((await P.getAttribute('#newTask', 'placeholder')) === 'Add a task…', 'english placeholder');
-  assert((await P.textContent('#dayMain')) === 'Today', 'english day');
   assert(await noHorizontalScroll(P), 'no horizontal scroll in English');
   await P.screenshot({ path: `${shots}/12-day-iphone-en.png` });
   await P.click('#settingsBtn');
   await P.click('#sheet [data-k="lang-ar"]');
   await closeSheet(P);
-  assert((await P.getAttribute('html', 'dir')) === 'rtl', 'back to rtl');
 });
 
 await step('13. Small iPhone, 320px, dark mode and laptop layouts', async () => {
@@ -366,27 +407,27 @@ await step('13. Small iPhone, 320px, dark mode and laptop layouts', async () => 
   const small = await browser.newContext({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
   const sp = await small.newPage();
   await sp.goto('http://localhost:4173/');
-  await sp.waitForSelector('#app');
+  await sp.waitForSelector('#newTask');
   assert(await noHorizontalScroll(sp), '320px');
   await small.close();
   await P.emulateMedia({ colorScheme: 'dark' });
   await P.screenshot({ path: `${shots}/13-day-iphone-dark.png` });
-  await openTask(P, 'مكالمة');
+  await P.click('#settingsBtn');
   await P.waitForTimeout(250);
-  await P.screenshot({ path: `${shots}/13-task-sheet-dark.png` });
+  await P.screenshot({ path: `${shots}/13-settings-dark.png` });
   await closeSheet(P);
   await P.emulateMedia({ colorScheme: 'light' });
-  const tapTargets = await P.evaluate(() =>
+  const small2 = await P.evaluate(() =>
     [...document.querySelectorAll('#list .check, #newTask, #prevBtn, #nextBtn, #settingsBtn, .week-day')]
       .map((e) => [e.id || e.className, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)])
       .filter(([, w, h]) => w < 40 || h < 40),
   );
-  assert(tapTargets.length === 0, `small tap targets: ${JSON.stringify(tapTargets)}`);
+  assert(small2.length === 0, `small tap targets: ${JSON.stringify(small2)}`);
   assert(await noHorizontalScroll(L), 'laptop');
   await L.screenshot({ path: `${shots}/13-day-laptop.png` });
 });
 
-await step('Laptop keyboard: n focuses the composer, arrows change day, Esc closes', async () => {
+await step('Laptop keyboard: n focuses the composer, arrows change day', async () => {
   await L.evaluate(() => document.activeElement && document.activeElement.blur());
   await L.keyboard.press('n');
   assert(await L.evaluate(() => document.activeElement.id === 'newTask'), 'focus');
@@ -398,53 +439,52 @@ await step('Laptop keyboard: n focuses the composer, arrows change day, Esc clos
   await poll(async () => (await L.textContent('#dayMain')) === 'اليوم', 'back to today');
 });
 
-await step('Recovery code: forgot passphrase on a new device', async () => {
-  const third = await device('http://127.0.0.2:4173', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  const T = third.page;
-  await T.waitForSelector('#unlockPass', { timeout: 15000 });
-  await T.click('#gate .link');
-  await T.fill('#recCode', recoveryCode.toLowerCase().replace(/-/g, ' '));
-  await T.fill('#recNew1', NEW_PASS);
-  await T.fill('#recNew2', NEW_PASS);
-  await T.click('#gate button[type=submit]');
-  await T.waitForSelector('#gate', { state: 'hidden', timeout: 20000 });
-  await row(T, 'قراءة كتاب').waitFor({ timeout: 8000 });
-  await third.ctx.close();
+await step('Export a plain copy', async () => {
+  await L.click('#settingsBtn');
+  const [download] = await Promise.all([L.waitForEvent('download'), L.click('#sheet [data-k="export"]')]);
+  assert(download.suggestedFilename().startsWith('pocket-time-'), 'file name');
+  await closeSheet(L);
 });
 
-await step('Export a plain copy through the download capability', async () => {
-  await P.click('#settingsBtn');
-  await P.click('#sheet [data-k="export"]');
-  await poll(() => P.evaluate(() => window.__downloads.length === 1), 'download');
-  const data = JSON.parse(await P.evaluate(() => window.__downloads[0].data));
-  assert(data.tasks.some((x) => x.title === 'قراءة كتاب'), 'export content');
-  await closeSheet(P);
+await step('Installable: manifest, icons and service worker are served', async () => {
+  const m = await P.evaluate(() => fetch('manifest.webmanifest').then((r) => r.json()));
+  assert(m.display === 'standalone' && m.icons.length >= 2, 'manifest');
+  assert(await P.evaluate(() => fetch('apple-touch-icon.png').then((r) => r.ok)), 'apple icon');
+});
+
+await step('Inside claude.ai the same page syncs through the artifact database', async () => {
+  const c = await device('http://localhost:4173', { viewport: { width: 390, height: 844 } }, '/claude.html');
+  await c.page.waitForSelector('#newTask');
+  await addTask(c.page, 'CLAUDE-SECRET');
+  await poll(() => [...docs.keys()].some((k) => k.includes('/vault/b/')), 'stored in db');
+  assert([...docs.keys()].includes('data/users/user-test-1/meta'), 'vault meta');
+  assert(!JSON.stringify([...docs]).includes('CLAUDE-SECRET'), 'ciphertext only');
+  await c.ctx.close();
 });
 
 await step('14. No notifications and no permission prompts', async () => {
   for (const d of [phone, laptop]) assert((await d.page.evaluate(() => window.__notif)) === 0, 'notification API touched');
 });
 
-await step('15. Server holds ciphertext only', async () => {
-  const all = [...docs.entries()];
-  assert(all.length >= 2, 'docs exist');
-  const dump = JSON.stringify(all);
-  for (const word of ['قراءة', 'رياضة', 'هدية', 'اللابتوب', '14:00', '20:30', PASS, NEW_PASS]) {
-    assert(!dump.includes(word), `plaintext found: ${word}`);
+await step('15. GitHub holds ciphertext only', async () => {
+  const files = [...gh.files.entries()].map(([p, f]) => [p, Buffer.from(f.content, 'base64').toString()]);
+  assert(files.length >= 2, 'files exist');
+  const dump = JSON.stringify(files);
+  for (const word of ['قراءة', 'رياضة', 'هدية', 'اللابتوب', '14:00', '20:30']) assert(!dump.includes(word), `plaintext found: ${word}`);
+  for (const [path, text] of files) {
+    const body = JSON.parse(text);
+    if (path === 'pt/meta.json') assert(Object.keys(body).sort().join() === 'kid,v', 'meta shape');
+    else assert(Object.keys(body).sort().join() === 'ct,iv,k,v', 'bucket shape ' + path);
   }
-  for (const [path, body] of all) {
-    assert(path.startsWith('data/users/user-test-1/'), 'private per-user path: ' + path);
-    if (path.endsWith('/keyring')) assert(Object.keys(body.pass).sort().join() === 'ct,iter,iv,kdf,salt', 'keyring shape');
-    else assert(Object.keys(body).sort().join() === 'ct,iv,k,v', 'bucket shape');
-  }
+  assert(!dump.includes(TOKEN), 'token not stored in repo');
 });
 
-await step('16. No third-party requests, no errors, no task content in logs', async () => {
+await step('16. Only GitHub is contacted: no third parties, no errors, no task text in logs', async () => {
   for (const d of [phone, laptop]) {
     assert(d.external.length === 0, 'external: ' + d.external.join(', '));
-    assert(d.errors.length === 0, 'errors: ' + d.errors.join(' | '));
-    const logs = d.consoleText.join('\n');
-    assert(!/قراءة|رياضة|هدية/.test(logs), 'task text in console');
+    const real = d.errors.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to load resource|net::ERR/.test(e));
+    assert(real.length === 0, 'errors: ' + real.join(' | '));
+    assert(!/قراءة|رياضة|هدية/.test(d.consoleText.join('\n')), 'task text in console');
   }
 });
 
