@@ -128,7 +128,10 @@ function renderHeader() {
   const rel = relativeLabel(ui.day);
   const weekday = weekdayName(ui.day, ui.lang);
   $('dayMain').textContent = rel || weekday;
-  $('daySub').textContent = rel ? `${weekday} ${formatDateNumeric(ui.day)}` : formatDateNumeric(ui.day);
+  // The year is left out when it is the current one, so the line fits next to the "Today" button.
+  const thisYear = ui.day.slice(0, 4) === todayKey().slice(0, 4);
+  const dateText = thisYear && ui.day !== todayKey() ? formatDateShort(ui.day) : formatDateNumeric(ui.day);
+  $('daySub').textContent = rel ? `${weekday} ${dateText}` : dateText;
   $('dayTitle').setAttribute('aria-label', `${rel ? rel + '، ' : ''}${weekday} ${formatDateNumeric(ui.day)}. ${t('pickDate')}`);
   const isToday = ui.day === todayKey();
   $('todayBtn').hidden = isToday;
@@ -532,7 +535,7 @@ function renderSheet(first) {
   if (s.kind === 'task') renderTaskSheet(first);
   else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
-    const builders = { settings: settingsSheet, carry: carrySheet, calendar: calendarSheet };
+    const builders = { settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
   }
   if (focusKey && !first) {
@@ -693,41 +696,55 @@ function renderTaskSheet(first) {
   );
 }
 
-function deleteChoices(task) {
+function deleteOne(task) {
   const id = task.id;
+  engine.remove(realId(id));
+  closeSheet();
+  toast(t('deleted'), { label: t('undo'), run: () => engine.restore(id) });
+}
+
+function deleteFollowing(task) {
+  const s = seriesOf(task);
+  engine.remove(realId(task.id));
+  if (s) endSeries(s, addDays(task.date, -1));
+  closeSheet();
+  toast(t('deletedSeries'));
+}
+
+function deleteButtons(task) {
+  if (!task.of) {
+    return [h('button', { type: 'button', class: 'btn danger-btn', 'data-k': 'deleteOne', onclick: () => deleteOne(task) }, t('delete'))];
+  }
+  return [
+    h('button', { type: 'button', class: 'btn danger-btn', 'data-k': 'deleteThis', onclick: () => deleteOne(task) }, t('deleteThis')),
+    h('button', { type: 'button', class: 'btn danger-btn', 'data-k': 'deleteFollowing', onclick: () => deleteFollowing(task) }, t('deleteFollowing')),
+  ];
+}
+
+// Shown after a long press on a task in the day list.
+function confirmDeleteSheet() {
+  const task = findTask(ui.sheet.id);
+  if (!task) {
+    setTimeout(closeSheet);
+    return [];
+  }
+  return [
+    h(
+      'div',
+      { class: 'delete-choices confirm-delete' },
+      h('h2', null, t('deleteAsk')),
+      h('p', { class: 'prose', dir: 'auto' }, task.title),
+      deleteButtons(task),
+      h('button', { type: 'button', class: 'btn', 'data-k': 'deleteCancel', onclick: closeSheet }, t('cancel')),
+    ),
+  ];
+}
+
+function deleteChoices(task) {
   return h(
     'div',
     { class: 'delete-choices' },
-    h(
-      'button',
-      {
-        type: 'button',
-        class: 'btn danger-btn',
-        'data-k': 'deleteThis',
-        onclick: () => {
-          engine.remove(realId(id));
-          closeSheet();
-          toast(t('deleted'), { label: t('undo'), run: () => engine.restore(id) });
-        },
-      },
-      t('deleteThis'),
-    ),
-    h(
-      'button',
-      {
-        type: 'button',
-        class: 'btn danger-btn',
-        'data-k': 'deleteFollowing',
-        onclick: () => {
-          const s = seriesOf(task);
-          engine.remove(realId(id));
-          if (s) endSeries(s, addDays(task.date, -1));
-          closeSheet();
-          toast(t('deletedSeries'));
-        },
-      },
-      t('deleteFollowing'),
-    ),
+    deleteButtons(task),
     h(
       'button',
       {
@@ -1978,6 +1995,48 @@ function setupEvents() {
     openSheet('calendar');
   });
   $('backdrop').addEventListener('click', closeSheet);
+  // Long press (or right click) on a task: ask, then delete.
+  const list = $('list');
+  let pressTimer = null;
+  let pressAt = null;
+  let pressed = false;
+  const cancelPress = () => {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  };
+  list.addEventListener('pointerdown', (e) => {
+    const li = e.target.closest('li.task');
+    if (!li || e.button > 0) return;
+    pressed = false;
+    pressAt = { x: e.clientX, y: e.clientY };
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressed = true;
+      openSheet('confirmDelete', { id: li.dataset.id });
+    }, 550);
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (pressTimer && pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 10) cancelPress();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) list.addEventListener(type, cancelPress);
+  list.addEventListener(
+    'click',
+    (e) => {
+      if (!pressed) return;
+      pressed = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true,
+  );
+  list.addEventListener('contextmenu', (e) => {
+    const li = e.target.closest('li.task');
+    if (!li) return;
+    e.preventDefault();
+    cancelPress();
+    if (!ui.sheet) openSheet('confirmDelete', { id: li.dataset.id });
+  });
+
   // A tap on empty space in the day goes straight to writing a new task.
   $('main').addEventListener('click', (e) => {
     if (e.target.closest('button, a, input, textarea, label, li.task')) return;

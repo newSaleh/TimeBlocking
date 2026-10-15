@@ -500,6 +500,39 @@ await step('Copy a task to the next day', async () => {
   await row(P, 'قراءة كتاب').waitFor();
 });
 
+await step('Long press on a task asks, then deletes (with undo)', async () => {
+  await addTask(P, 'للحذف بضغطة مطولة');
+  const r = row(P, 'للحذف بضغطة مطولة');
+  await r.waitFor();
+  await P.evaluate(() => (document.getElementById('toast').hidden = true)); // an earlier notice could sit over the row
+  await r.scrollIntoViewIfNeeded();
+  const box = await r.locator('.task-title').boundingBox();
+  await P.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await P.mouse.down();
+  await P.waitForTimeout(750);
+  await P.mouse.up();
+  await P.waitForSelector('#sheet .confirm-delete');
+  assert(await P.isHidden('#taskTitle'), 'the edit sheet did not open');
+  await P.waitForTimeout(200);
+  await P.screenshot({ path: `${shots}/long-press-delete-iphone.png` });
+  await P.click('#sheet [data-k="deleteCancel"]');
+  await P.waitForSelector('#sheetLayer', { state: 'hidden' });
+  assert((await r.count()) === 1, 'cancel keeps it');
+  await P.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await P.mouse.down();
+  await P.waitForTimeout(750);
+  await P.mouse.up();
+  await P.click('#sheet [data-k="deleteOne"]');
+  await poll(async () => (await r.count()) === 0, 'deleted');
+  await P.click('#toast button');
+  await r.waitFor();
+  await P.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await P.mouse.down();
+  await P.mouse.up();
+  await P.waitForSelector('#taskTitle');
+  await closeSheet(P);
+});
+
 await step('Light / dark switch, and a red delete button', async () => {
   await P.click('#settingsBtn');
   await P.click('#sheet [data-k="theme-dark"]');

@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached so Pocket Time opens without a
 // connection. Only this site's own files are cached; sync requests to the
 // GitHub API are never touched.
-const CACHE = 'pocket-time-703eb38fa51b';
+const CACHE = 'pocket-time-8343836f8b12';
 const FILES = ["./","index.html","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 
 self.addEventListener('install', (event) => {

@@ -1069,3 +1069,21 @@ a.btn {
 .btn.danger-btn {
   color: var(--danger);
 }
+
+/* ---------- Long press to delete ---------- */
+.task {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.confirm-delete {
+  padding-block: 8px 4px;
+}
+.confirm-delete h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.confirm-delete .prose {
+  font-size: 16px;
+  color: var(--fg);
+}
