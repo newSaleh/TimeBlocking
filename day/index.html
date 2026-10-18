@@ -22,6 +22,8 @@
   --sel-bg: #15181d;
   --sel-fg: #ffffff;
   --danger: #c2372d;
+  --ink: #1d2f5e;
+  --ink-soft: #b9c3da;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Arabic', 'Segoe UI', 'Noto Sans Arabic',
     'Noto Sans', Tahoma, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -48,6 +50,8 @@
     --sel-bg: #7ea6ff;
     --sel-fg: #06080d;
     --danger: #ff6b63;
+    --ink: #a9bdf2;
+    --ink-soft: #2e3550;
     color-scheme: dark;
   }
 }
@@ -69,6 +73,8 @@
   --sel-bg: #7ea6ff;
   --sel-fg: #06080d;
   --danger: #ff6b63;
+  --ink: #a9bdf2;
+  --ink-soft: #2e3550;
   color-scheme: dark;
 }
 
@@ -1092,161 +1098,6 @@ a.btn {
   color: var(--fg);
 }
 
-/* ---------- Hour grid (day/) ---------- */
-.strip {
-  flex: none;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 2px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
-  scrollbar-width: none;
-}
-.chip-task {
-  flex: none;
-  max-width: 60vw;
-  min-height: 36px;
-  padding: 6px 12px;
-  border-radius: 18px;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chip-task.done {
-  color: var(--faint);
-  text-decoration: line-through;
-}
-.grid-main {
-  padding-block: 8px 24px;
-}
-.hgrid {
-  position: relative;
-  --gutter: 48px;
-}
-.hg-hour {
-  position: absolute;
-  inset-inline: 0;
-  height: 0;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--faint);
-}
-.hg-label {
-  position: absolute;
-  inset-inline-start: 0;
-  top: -8px;
-  background: var(--page);
-  padding-inline-end: 6px;
-}
-.hg-sleep {
-  position: absolute;
-  inset-inline: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-inline: 12px;
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 13px;
-}
-.hg-gap {
-  position: absolute;
-  inset-inline: var(--gutter) 0;
-  border: 1px dashed var(--line);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--faint);
-  font-size: 12px;
-  pointer-events: none;
-}
-.hg-block {
-  position: absolute;
-  inset-inline-start: calc(var(--gutter) + (100% - var(--gutter)) * var(--c) / var(--n));
-  width: calc((100% - var(--gutter)) / var(--n) - 3px);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 1px;
-  padding: 3px 8px;
-  border-radius: 8px;
-  border-inline-start: 3px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--fg);
-  text-align: start;
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 1.25;
-}
-.hg-block.overlap {
-  border-inline-start-color: var(--tag-fg);
-  background: var(--tag-bg);
-}
-.hg-block.done {
-  opacity: 0.55;
-}
-.hg-block.done .hg-block.short {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding-block: 0;
-}
-.hg-title {
-  text-decoration: line-through;
-}
-.hg-block.current {
-  box-shadow: 0 0 0 1.5px var(--accent);
-}
-.hg-block.short {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding-block: 0;
-}
-.hg-title {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hg-time {
-  font-size: 12px;
-  color: var(--muted);
-}
-.hg-slot {
-  position: absolute;
-  inset-inline: var(--gutter) 0;
-  border-radius: 8px;
-  border: 1.5px solid var(--accent);
-  background: var(--accent-soft);
-  pointer-events: none;
-}
-.hg-now {
-  position: absolute;
-  inset-inline: calc(var(--gutter) - 6px) 0;
-  height: 0;
-  border-top: 2px solid var(--accent);
-  pointer-events: none;
-  z-index: 1;
-}
-.hg-now::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 0;
-  top: -6px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-}
 .sheet-hint {
   margin: 0 0 12px;
   color: var(--muted);
@@ -1293,6 +1144,261 @@ a.btn {
   font-size: 14px;
 }
 
+/* ---------- Time box sheet (day/): a paper page, printable on A4 ---------- */
+.grid-main {
+  position: relative;
+  background: var(--bg);
+  padding-block: 12px 24px;
+}
+.paper {
+  background: var(--page);
+  color: var(--ink);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(20, 30, 60, 0.08);
+  padding: 20px 16px 24px;
+  display: grid;
+  gap: 18px;
+  max-width: 820px;
+  margin-inline: auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  justify-content: flex-start;
+}
+.brand-icon {
+  width: 52px;
+  height: 52px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+.paper-label {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.prio {
+  border: 1px solid var(--ink-soft);
+}
+.prio-box {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 6px 10px;
+  text-align: start;
+  font-size: 16px;
+  color: var(--fg);
+}
+.prio-box + .prio-box {
+  border-top: 1px solid var(--ink-soft);
+}
+.prio-box.done,
+.dump-item.done {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+.dump {
+  min-height: 160px;
+  padding: 8px;
+  border: 1px solid var(--ink-soft);
+  background-image: radial-gradient(var(--ink-soft) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.dump-item {
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--fg);
+  font-size: 15px;
+  text-align: start;
+}
+.paper-date {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+.paper-line {
+  flex: 1;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 2px;
+  color: var(--fg);
+  font-size: 15px;
+}
+.tb {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.tb thead th {
+  font-size: 13px;
+  font-weight: 700;
+  padding-bottom: 6px;
+  color: var(--ink);
+}
+.tb thead th:first-child,
+.tb-hour {
+  width: 44px;
+}
+.tb td,
+.tb-hour {
+  border: 1px solid var(--ink-soft);
+  height: 48px;
+  padding: 0;
+}
+.tb-hour {
+  font-size: 15px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ink);
+}
+.tb-cell button {
+  width: 100%;
+  height: 100%;
+  min-height: 46px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 6px;
+  text-align: start;
+  overflow: hidden;
+}
+.tb-cell.filled {
+  background: var(--accent-soft);
+}
+.tb-cell.overlap {
+  background: var(--tag-bg);
+}
+.tb-cell.done {
+  opacity: 0.55;
+}
+.tb-cell.done .tb-task {
+  text-decoration: line-through;
+}
+.tb-cell.now {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.tb-cell.slot {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+}
+.tb-task {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--fg);
+}
+.tb-sleep td {
+  height: 40px;
+  background: var(--surface);
+}
+.tb-sleep button {
+  width: 100%;
+  height: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (min-width: 720px) {
+  .paper {
+    grid-template-columns: 0.9fr 1fr;
+    gap: 28px;
+    padding: 36px 32px;
+  }
+  .dump {
+    min-height: 420px;
+  }
+}
+
+/* Printing (or "Save as PDF") gives one A4 page like the paper planner. */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+  :root {
+    --page: #fff;
+    --bg: #fff;
+    --fg: #15181d;
+    --ink: #1d2f5e;
+    --ink-soft: #b9c3da;
+    --accent-soft: #e7edfa;
+    --tag-bg: #f2ecdc;
+    --surface: #f2f4f7;
+    padding: 0 !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .top,
+  .composer,
+  .timer,
+  .sheet-layer,
+  .toast,
+  .gate {
+    display: none !important;
+  }
+  .app,
+  .main {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .paper {
+    box-shadow: none;
+    border-radius: 0;
+    max-width: none;
+    padding: 0;
+    grid-template-columns: 0.9fr 1fr;
+    gap: 8mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .dump {
+    min-height: 0;
+    height: 170mm;
+  }
+  .tb td,
+  .tb-hour,
+  .tb-sleep td {
+    height: calc(232mm / var(--rows));
+  }
+  .tb-cell button,
+  .tb-sleep button {
+    min-height: 0;
+  }
+  .tb-cell.now {
+    box-shadow: none;
+  }
+}
+
 </style>
 <div id="app" class="app" data-view="day">
   <header class="top">
@@ -1309,8 +1415,8 @@ a.btn {
         <button id="nextBtn" class="icon-btn" type="button">
           <svg class="icon flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
         </button>
-        <button id="sleepBtn" class="icon-btn" type="button">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/></svg>
+        <button id="printBtn" class="icon-btn" type="button">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/></svg>
         </button>
         <a id="viewLink" class="icon-btn" href="../">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
@@ -1325,7 +1431,6 @@ a.btn {
     </nav>
     <p id="status" class="status" role="status" aria-live="polite" hidden></p>
   </header>
-  <div id="strip" class="strip" hidden></div>
   <main id="main" class="main grid-main"><div id="list"></div></main>
   <div id="timer" class="timer"></div>
   <footer class="composer">
@@ -2810,6 +2915,11 @@ const AR = {
   sleepTo: 'وأستيقظ الساعة',
   sleepOff: 'إظهار كل الساعات',
   sleepBand: 'نوم',
+  topPriorities: 'أهم 3 مهام',
+  brainDump: 'تفريغ الذهن',
+  addPriority: 'أضف واحدة من أهم مهام اليوم…',
+  sheetDate: 'التاريخ',
+  print: 'طباعة أو حفظ PDF',
   timer30: '⏱ 30 دقيقة',
   timerUntilPick: 'حتى الساعة…',
   timerUntil: 'حتى',
@@ -2999,6 +3109,11 @@ const EN = {
   sleepTo: 'Wake up at',
   sleepOff: 'Show all hours',
   sleepBand: 'Sleep',
+  topPriorities: 'Top Priorities',
+  brainDump: 'Brain Dump',
+  addPriority: 'Add a top priority…',
+  sheetDate: 'Date',
+  print: 'Print or save as PDF',
   timer30: '⏱ 30 min',
   timerUntilPick: 'Until…',
   timerUntil: 'until',
@@ -3192,17 +3307,17 @@ function translator(lang) {
 }
 
 // ---- grid.js ----
-// Day grid: pure layout for the hour-by-hour page (day/). Minutes are counted
-// from midnight of the shown day; nothing here touches the DOM.
+// Day sheet: pure layout for the hour-by-hour page (day/), drawn like a paper
+// time box: one row per hour, a cell for :00 and one for :30. Minutes are
+// counted from midnight of the shown day; nothing here touches the DOM.
 
 
 const DAY_MIN = 24 * 60;
-const HOUR_PX = 64;
-const SLEEP_PX = 40;
+const PRIORITY = '★';
 
-// Sleep hours fold into a thin band. from/to are "HH:MM"; the range may wrap
-// past midnight (23:00 → 06:00). Returns the visible and folded stretches of
-// the day in order, each { from, to, sleep }.
+// Sleep hours fold into one row. from/to are "HH:MM"; the range may wrap past
+// midnight (23:00 → 06:00). Returns the visible and folded stretches of the
+// day in order, each { from, to, sleep }.
 function segments(sleep) {
   if (!sleep || !sleep.from || !sleep.to || sleep.from === sleep.to) return [{ from: 0, to: DAY_MIN, sleep: false }];
   const a = toMinutes(sleep.from);
@@ -3219,91 +3334,41 @@ function segments(sleep) {
   return out;
 }
 
-// Pixel offset of each segment and the total height.
-function scale(segs) {
-  let y = 0;
-  const placed = segs.map((s) => {
-    const h = s.sleep ? SLEEP_PX : ((s.to - s.from) / 60) * HOUR_PX;
-    const p = { ...s, y, h };
-    y += h;
-    return p;
-  });
-  return { segs: placed, height: y };
-}
-
-// Minute of the day → y. Inside a folded stretch everything sits on the band.
-function yOf(sc, min) {
-  for (const s of sc.segs) {
-    if (min < s.to || s === sc.segs[sc.segs.length - 1]) {
-      if (s.sleep) return s.y + (min <= s.from ? 0 : s.h);
-      return s.y + ((Math.max(min, s.from) - s.from) / 60) * HOUR_PX;
-    }
-  }
-  return sc.height;
-}
-
-// y → minute of the day (visible stretches only), rounded down to `step`.
-function minuteAt(sc, y, step = 30) {
-  for (const s of sc.segs) {
-    if (y < s.y + s.h) {
-      if (s.sleep) return null;
-      const m = s.from + ((y - s.y) / HOUR_PX) * 60;
-      return Math.min(s.to - step, Math.floor(m / step) * step);
-    }
-  }
-  return null;
-}
-
 function span(task) {
   const s = toMinutes(task.start);
   const len = task.end ? durationMinutes(task.start, task.end) : 0;
-  return [s, Math.min(DAY_MIN, s + Math.max(len, 15))];
+  return [s, Math.min(DAY_MIN, s + Math.max(len, 1))];
 }
 
-// Side-by-side columns for overlapping tasks: each task gets { col, cols }
-// within its cluster of mutually reaching tasks.
-function layoutColumns(tasks) {
-  const items = tasks
-    .map((task) => ({ task, span: span(task) }))
-    .sort((a, b) => a.span[0] - b.span[0] || b.span[1] - a.span[1]);
-  const out = [];
-  let cluster = [];
-  let cols = [];
-  let reach = -1;
-  const close = () => {
-    for (const it of cluster) out.push({ task: it.task, start: it.span[0], end: it.span[1], col: it.col, cols: cols.length, overlap: cluster.length > 1 });
-    cluster = [];
-    cols = [];
-  };
-  for (const it of items) {
-    if (it.span[0] >= reach) close();
-    let c = cols.findIndex((end) => end <= it.span[0]);
-    if (c < 0) c = cols.push(0) - 1;
-    cols[c] = it.span[1];
-    it.col = c;
-    cluster.push(it);
-    reach = Math.max(reach, it.span[1]);
-  }
-  close();
-  return out;
-}
-
-// Free stretches of at least `min` minutes between tasks, visible hours only.
-function gaps(placed, segs, min = 30) {
-  const busy = placed.map((p) => [p.start, p.end]).sort((a, b) => a[0] - b[0]);
-  const out = [];
-  for (const s of segs) {
-    if (s.sleep) continue;
-    let at = s.from;
-    for (const [a, b] of busy) {
-      if (b <= at || a >= s.to) continue;
-      if (a - at >= min) out.push([at, a]);
-      at = Math.max(at, b);
+// Rows of the sheet. A visible hour is { hour, cells: [cell, cell] } where a
+// cell is { start, items: [{ task, first }] }: every task that covers that half
+// hour, `first` where its title is written. A folded stretch is
+// { sleep: true, from, to, count } with the number of tasks starting in it.
+function sheetRows(tasks, sleep) {
+  const spans = tasks.map((task) => ({ task, span: span(task) }));
+  const rows = [];
+  for (const sg of segments(sleep)) {
+    if (sg.sleep) {
+      const count = spans.filter(({ span: [a] }) => a >= sg.from && a < sg.to).length;
+      rows.push({ sleep: true, from: sg.from, to: sg.to, count });
+      continue;
     }
-    if (s.to - at >= min) out.push([at, s.to]);
+    for (let m = Math.floor(sg.from / 60) * 60; m < sg.to; m += 60) {
+      const cells = [m, m + 30].map((start) => {
+        const end = start + 30;
+        const items = spans
+          .filter(({ span: [a, b] }) => a < end && b > start)
+          .map(({ task, span: [a] }) => ({ task, first: a >= start || start === sg.from }));
+        return { start, items };
+      });
+      rows.push({ hour: m / 60, cells });
+    }
   }
-  return out;
+  return rows;
 }
+
+const isPriority = (task) => task.title.startsWith(PRIORITY);
+const priorityTitle = (task) => task.title.slice(PRIORITY.length).trim();
 
 // ---- app.js ----
 // Pocket Time: interface and start-up.
@@ -3642,98 +3707,132 @@ function nowLine() {
 // ---------------------------------------------------------------------------
 // Hour grid (day/ only): the same tasks laid out on the 24 hours of the day.
 
-let gridScale = null;
-const px = (n) => `${Math.round(n)}px`;
+const boxIcon = () => svg(['M3 3h18v18H3z', 'M3 3l18 18M21 3L3 21'], 'brand-icon');
 
 function renderGrid() {
   const { scheduled, anytime } = dayTasks(ui.day);
   const isToday = ui.day === todayKey();
-  const sc = scale(segments(ui.sleep));
-  gridScale = sc;
+  const now = toMinutes(nowTime());
+  const prios = anytime.filter(isPriority).slice(0, 3);
+  const dump = anytime.filter((x) => !prios.includes(x));
+  const openTask = (task) => openSheet('task', { id: task.id });
+  const startSlot = (slot) => {
+    ui.slot = slot;
+    render();
+    input().focus();
+  };
 
-  const strip = $('strip');
-  strip.hidden = !anytime.length;
-  strip.replaceChildren(
-    ...anytime.map((x) =>
+  const prioBoxes = [0, 1, 2].map((i) => {
+    const task = prios[i];
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: `prio-box${task && task.done ? ' done' : ''}`,
+        dir: 'auto',
+        'data-id': task ? task.id : null,
+        onclick: () => (task ? openTask(task) : startSlot({ prio: true })),
+      },
+      task ? priorityTitle(task) : '',
+    );
+  });
+
+  const dumpBox = h(
+    'div',
+    { class: 'dump', onclick: (e) => !e.target.closest('button') && startSlot(null) },
+    dump.map((x) =>
       h(
         'button',
-        { type: 'button', class: `chip-task${x.done ? ' done' : ''}`, dir: 'auto', 'data-id': x.id, onclick: () => openSheet('task', { id: x.id }) },
-        x.of ? h('span', { class: 'rep-mark', 'aria-hidden': 'true' }, '↻ ') : null,
+        { type: 'button', class: `dump-item${x.done ? ' done' : ''}`, dir: 'auto', 'data-id': x.id, onclick: () => openTask(x) },
+        x.of ? '↻ ' : '',
         x.title,
       ),
     ),
   );
 
-  const kids = [];
-  for (const sg of sc.segs) {
-    if (sg.sleep) {
-      const hiddenCount = scheduled.filter((x) => {
-        const m = toMinutes(x.start);
-        return m >= sg.from && m < sg.to;
-      }).length;
-      kids.push(
+  const rows = sheetRows(scheduled, ui.sleep).map((r) => {
+    if (r.sleep) {
+      return h(
+        'tr',
+        { class: 'tb-sleep' },
         h(
-          'button',
-          { type: 'button', class: 'hg-sleep', style: `top:${px(sg.y)};height:${px(sg.h)}`, onclick: () => openSheet('sleep') },
-          h('span', null, '☾ ', t('sleepBand'), ' ', timeEl(rangeText(fromMinutes(sg.from), fromMinutes(sg.to % DAY_MIN)))),
-          hiddenCount ? h('span', { class: 'tag' }, String(hiddenCount)) : null,
+          'td',
+          { colspan: '3' },
+          h(
+            'button',
+            { type: 'button', 'data-k': 'sleepRow', onclick: () => openSheet('sleep') },
+            '☾ ',
+            t('sleepBand'),
+            ' ',
+            timeEl(rangeText(fromMinutes(r.from), fromMinutes(r.to % DAY_MIN))),
+            r.count ? h('span', { class: 'tag' }, String(r.count)) : null,
+          ),
         ),
       );
-      continue;
     }
-    for (let m = Math.ceil(sg.from / 60) * 60; m < sg.to; m += 60) {
-      kids.push(h('div', { class: 'hg-hour', style: `top:${px(yOf(sc, m))}` }, h('span', { class: 'hg-label' }, timeEl(fromMinutes(m)))));
-    }
-  }
+    const cells = r.cells.map((c) => {
+      const titled = c.items.filter((x) => x.first);
+      const current = isToday && now >= c.start && now < c.start + 30;
+      const cls = ['tb-cell'];
+      if (c.items.length) cls.push('filled');
+      if (c.items.length > 1) cls.push('overlap');
+      if (c.items.length && c.items.every((x) => x.task.done)) cls.push('done');
+      if (current) cls.push('now');
+      if (ui.slot && ui.slot.start === fromMinutes(c.start)) cls.push('slot');
+      return h(
+        'td',
+        { class: cls.join(' ') },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-start': fromMinutes(c.start),
+            'aria-label': `${fromMinutes(c.start)} ${c.items.map((x) => x.task.title).join('، ')}`,
+            onclick: () => {
+              if (c.items.length) openTask((titled[0] || c.items[0]).task);
+              else startSlot({ start: fromMinutes(c.start), end: fromMinutes(c.start + 30) });
+            },
+          },
+          titled.map((x) => h('span', { class: 'tb-task', dir: 'auto', 'data-id': x.task.id }, x.task.of ? '↻ ' : '', x.task.title)),
+        ),
+      );
+    });
+    return h('tr', { 'data-hour': String(r.hour) }, h('th', { scope: 'row', class: 'tb-hour' }, String(r.hour)), cells);
+  });
 
-  const placed = layoutColumns(scheduled);
-  for (const [a, b] of gaps(placed, sc.segs, 60)) {
-    if (isToday && b <= toMinutes(nowTime())) continue;
-    kids.push(
+  const date = `${weekdayName(ui.day, ui.lang)} ${formatDateNumeric(ui.day)}`;
+  const paper = h(
+    'div',
+    { class: 'paper', style: `--rows:${rows.length}` },
+    h(
+      'div',
+      { class: 'paper-side' },
+      h('div', { class: 'brand', dir: 'ltr' }, boxIcon(), h('span', null, 'The', h('br'), 'Time', h('br'), 'Box.')),
+      h('h3', { class: 'paper-label' }, t('topPriorities')),
+      h('div', { class: 'prio' }, prioBoxes),
+      h('h3', { class: 'paper-label' }, t('brainDump')),
+      dumpBox,
+    ),
+    h(
+      'div',
+      { class: 'paper-main' },
+      h('div', { class: 'paper-date' }, h('span', null, t('sheetDate')), h('span', { class: 'paper-line tnum' }, date)),
       h(
-        'div',
-        { class: 'hg-gap', style: `top:${px(yOf(sc, a) + 2)};height:${px(yOf(sc, b) - yOf(sc, a) - 4)}` },
-        h('span', null, t('freeTime', { d: formatDuration(b - a, ui.lang) })),
+        'table',
+        { class: 'tb' },
+        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum' }, ':00'), h('th', { class: 'tnum' }, ':30'))),
+        h('tbody', null, rows),
       ),
-    );
-  }
-  const now = toMinutes(nowTime());
-  for (const p of placed) {
-    const task = p.task;
-    const top = yOf(sc, p.start);
-    const bottom = yOf(sc, p.end);
-    if (bottom - top < 1) continue; // inside the folded sleep band
-    const current = isToday && p.start <= now && now < p.end;
-    const tall = Math.max(bottom - top - 2, 22);
-    kids.push(
-      h(
-        'button',
-        {
-          type: 'button',
-          class: `hg-block${tall < 40 ? ' short' : ''}${task.done ? ' done' : ''}${p.overlap ? ' overlap' : ''}${current ? ' current' : ''}`,
-          style: `top:${px(top + 1)};height:${px(tall)};--c:${p.col};--n:${p.cols}`,
-          'data-id': task.id,
-          onclick: () => openSheet('task', { id: task.id }),
-        },
-        h('span', { class: 'hg-title', dir: 'auto' }, task.of ? '↻ ' : '', task.title),
-        h('span', { class: 'hg-time' }, timeEl(rangeText(task.start, task.end))),
-      ),
-    );
-  }
-  if (ui.slot) {
-    const a = toMinutes(ui.slot.start);
-    kids.push(h('div', { class: 'hg-slot', style: `top:${px(yOf(sc, a))};height:${px(yOf(sc, a + 30) - yOf(sc, a))}` }));
-  }
-  if (isToday) {
-    kids.push(h('div', { class: 'hg-now', style: `top:${px(yOf(sc, now))}`, 'aria-label': `${t('now')} ${nowTime()}` }));
-  }
-  $('list').replaceChildren(h('div', { id: 'hgrid', class: 'hgrid', style: `height:${px(sc.height)}` }, kids));
+    ),
+  );
+  $('list').replaceChildren(paper);
 
   if (ui.scrollToNow) {
     ui.scrollToNow = false;
-    const first = scheduled[0] ? toMinutes(scheduled[0].start) : 8 * 60;
-    const target = isToday ? now : first;
-    $('main').scrollTop = Math.max(0, yOf(sc, target) - 96);
+    const hour = isToday ? Math.floor(now / 60) : scheduled[0] ? Number(scheduled[0].start.slice(0, 2)) : 8;
+    const row = $('list').querySelector(`tr[data-hour="${hour}"]`);
+    const main = $('main');
+    if (row) main.scrollTop += row.getBoundingClientRect().top - main.getBoundingClientRect().top - 96;
   }
   if (ui.lastAdded) {
     const el = $('list').querySelector(`[data-id="${ui.lastAdded}"]`);
@@ -3751,17 +3850,7 @@ function setupGridEvents() {
   setInterval(() => {
     if (!timer.end && !(document.activeElement && document.activeElement.tagName === 'SELECT')) renderTimer();
   }, 60000);
-  $('sleepBtn').addEventListener('click', () => openSheet('sleep'));
-  // A tap on an empty half hour: the next task typed goes there.
-  $('list').addEventListener('click', (e) => {
-    const grid = e.target.closest('#hgrid');
-    if (!grid || e.target.closest('button') || !gridScale) return;
-    const y = e.clientY - grid.getBoundingClientRect().top;
-    const m = minuteAt(gridScale, y, 30);
-    if (m == null) return;
-    ui.slot = { start: fromMinutes(m), end: fromMinutes(m + 30) };
-    render();
-  });
+  $('printBtn').addEventListener('click', () => window.print());
 }
 
 // --- Timer: counts down on the page; the screen stays on while it runs.
@@ -4026,7 +4115,7 @@ function applyLang() {
   $('week').setAttribute('aria-label', t('dateLabel'));
   $('parseIgnore').textContent = t('ignoreParse');
   $('viewLink').setAttribute('aria-label', t(DAY_VIEW ? 'listView' : 'dayView'));
-  if (DAY_VIEW) $('sleepBtn').setAttribute('aria-label', t('sleepTitle'));
+  if (DAY_VIEW) $('printBtn').setAttribute('aria-label', t('print'));
 }
 
 // ---------------------------------------------------------------------------
@@ -4037,7 +4126,9 @@ const input = () => $('newTask');
 function renderComposer() {
   const el = input();
   const ph = ui.slot
-    ? t('addAt', { time: ui.slot.start })
+    ? ui.slot.prio
+      ? t('addPriority')
+      : t('addAt', { time: ui.slot.start })
     : ui.day === todayKey()
       ? t('addPlaceholder')
       : t('addPlaceholderDay', { day: shortDay(ui.day) });
@@ -4065,9 +4156,9 @@ function submitNew() {
   const p = ui.ignoreParse ? null : parseQuickAdd(text, todayKey());
   const use = p && p.found;
   const date = use && p.date ? p.date : ui.day;
-  const slot = !(use && p.start) && ui.slot;
+  const slot = !(use && p.start) && ui.slot && ui.slot.start ? ui.slot : null;
   const id = engine.create({
-    title: use ? p.title : text,
+    title: (ui.slot && ui.slot.prio ? `${PRIORITY} ` : '') + (use ? p.title : text),
     date,
     start: use && p.start ? p.start : slot ? slot.start : null,
     end: use && p.start ? p.end : slot ? slot.end : null,

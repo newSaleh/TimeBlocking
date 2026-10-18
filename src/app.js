@@ -25,7 +25,7 @@ import { translator } from './i18n.js';
 import { SyncEngine, occursOn, occurrenceId, parseOccurrenceId } from './sync.js';
 import { openIdbStore, memoryStore } from './storage.js';
 import { claudeRemote, githubRemote } from './remote.js';
-import { segments, scale, yOf, minuteAt, layoutColumns, gaps, DAY_MIN } from './grid.js';
+import { sheetRows, isPriority, priorityTitle, PRIORITY, DAY_MIN } from './grid.js';
 import { newVault, importVaultKey, encodePairing, decodePairing, randomId } from './crypto.js';
 
 // ---------------------------------------------------------------------------
@@ -361,98 +361,132 @@ function nowLine() {
 // ---------------------------------------------------------------------------
 // Hour grid (day/ only): the same tasks laid out on the 24 hours of the day.
 
-let gridScale = null;
-const px = (n) => `${Math.round(n)}px`;
+const boxIcon = () => svg(['M3 3h18v18H3z', 'M3 3l18 18M21 3L3 21'], 'brand-icon');
 
 function renderGrid() {
   const { scheduled, anytime } = dayTasks(ui.day);
   const isToday = ui.day === todayKey();
-  const sc = scale(segments(ui.sleep));
-  gridScale = sc;
+  const now = toMinutes(nowTime());
+  const prios = anytime.filter(isPriority).slice(0, 3);
+  const dump = anytime.filter((x) => !prios.includes(x));
+  const openTask = (task) => openSheet('task', { id: task.id });
+  const startSlot = (slot) => {
+    ui.slot = slot;
+    render();
+    input().focus();
+  };
 
-  const strip = $('strip');
-  strip.hidden = !anytime.length;
-  strip.replaceChildren(
-    ...anytime.map((x) =>
+  const prioBoxes = [0, 1, 2].map((i) => {
+    const task = prios[i];
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: `prio-box${task && task.done ? ' done' : ''}`,
+        dir: 'auto',
+        'data-id': task ? task.id : null,
+        onclick: () => (task ? openTask(task) : startSlot({ prio: true })),
+      },
+      task ? priorityTitle(task) : '',
+    );
+  });
+
+  const dumpBox = h(
+    'div',
+    { class: 'dump', onclick: (e) => !e.target.closest('button') && startSlot(null) },
+    dump.map((x) =>
       h(
         'button',
-        { type: 'button', class: `chip-task${x.done ? ' done' : ''}`, dir: 'auto', 'data-id': x.id, onclick: () => openSheet('task', { id: x.id }) },
-        x.of ? h('span', { class: 'rep-mark', 'aria-hidden': 'true' }, '↻ ') : null,
+        { type: 'button', class: `dump-item${x.done ? ' done' : ''}`, dir: 'auto', 'data-id': x.id, onclick: () => openTask(x) },
+        x.of ? '↻ ' : '',
         x.title,
       ),
     ),
   );
 
-  const kids = [];
-  for (const sg of sc.segs) {
-    if (sg.sleep) {
-      const hiddenCount = scheduled.filter((x) => {
-        const m = toMinutes(x.start);
-        return m >= sg.from && m < sg.to;
-      }).length;
-      kids.push(
+  const rows = sheetRows(scheduled, ui.sleep).map((r) => {
+    if (r.sleep) {
+      return h(
+        'tr',
+        { class: 'tb-sleep' },
         h(
-          'button',
-          { type: 'button', class: 'hg-sleep', style: `top:${px(sg.y)};height:${px(sg.h)}`, onclick: () => openSheet('sleep') },
-          h('span', null, '☾ ', t('sleepBand'), ' ', timeEl(rangeText(fromMinutes(sg.from), fromMinutes(sg.to % DAY_MIN)))),
-          hiddenCount ? h('span', { class: 'tag' }, String(hiddenCount)) : null,
+          'td',
+          { colspan: '3' },
+          h(
+            'button',
+            { type: 'button', 'data-k': 'sleepRow', onclick: () => openSheet('sleep') },
+            '☾ ',
+            t('sleepBand'),
+            ' ',
+            timeEl(rangeText(fromMinutes(r.from), fromMinutes(r.to % DAY_MIN))),
+            r.count ? h('span', { class: 'tag' }, String(r.count)) : null,
+          ),
         ),
       );
-      continue;
     }
-    for (let m = Math.ceil(sg.from / 60) * 60; m < sg.to; m += 60) {
-      kids.push(h('div', { class: 'hg-hour', style: `top:${px(yOf(sc, m))}` }, h('span', { class: 'hg-label' }, timeEl(fromMinutes(m)))));
-    }
-  }
+    const cells = r.cells.map((c) => {
+      const titled = c.items.filter((x) => x.first);
+      const current = isToday && now >= c.start && now < c.start + 30;
+      const cls = ['tb-cell'];
+      if (c.items.length) cls.push('filled');
+      if (c.items.length > 1) cls.push('overlap');
+      if (c.items.length && c.items.every((x) => x.task.done)) cls.push('done');
+      if (current) cls.push('now');
+      if (ui.slot && ui.slot.start === fromMinutes(c.start)) cls.push('slot');
+      return h(
+        'td',
+        { class: cls.join(' ') },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-start': fromMinutes(c.start),
+            'aria-label': `${fromMinutes(c.start)} ${c.items.map((x) => x.task.title).join('، ')}`,
+            onclick: () => {
+              if (c.items.length) openTask((titled[0] || c.items[0]).task);
+              else startSlot({ start: fromMinutes(c.start), end: fromMinutes(c.start + 30) });
+            },
+          },
+          titled.map((x) => h('span', { class: 'tb-task', dir: 'auto', 'data-id': x.task.id }, x.task.of ? '↻ ' : '', x.task.title)),
+        ),
+      );
+    });
+    return h('tr', { 'data-hour': String(r.hour) }, h('th', { scope: 'row', class: 'tb-hour' }, String(r.hour)), cells);
+  });
 
-  const placed = layoutColumns(scheduled);
-  for (const [a, b] of gaps(placed, sc.segs, 60)) {
-    if (isToday && b <= toMinutes(nowTime())) continue;
-    kids.push(
+  const date = `${weekdayName(ui.day, ui.lang)} ${formatDateNumeric(ui.day)}`;
+  const paper = h(
+    'div',
+    { class: 'paper', style: `--rows:${rows.length}` },
+    h(
+      'div',
+      { class: 'paper-side' },
+      h('div', { class: 'brand', dir: 'ltr' }, boxIcon(), h('span', null, 'The', h('br'), 'Time', h('br'), 'Box.')),
+      h('h3', { class: 'paper-label' }, t('topPriorities')),
+      h('div', { class: 'prio' }, prioBoxes),
+      h('h3', { class: 'paper-label' }, t('brainDump')),
+      dumpBox,
+    ),
+    h(
+      'div',
+      { class: 'paper-main' },
+      h('div', { class: 'paper-date' }, h('span', null, t('sheetDate')), h('span', { class: 'paper-line tnum' }, date)),
       h(
-        'div',
-        { class: 'hg-gap', style: `top:${px(yOf(sc, a) + 2)};height:${px(yOf(sc, b) - yOf(sc, a) - 4)}` },
-        h('span', null, t('freeTime', { d: formatDuration(b - a, ui.lang) })),
+        'table',
+        { class: 'tb' },
+        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum' }, ':00'), h('th', { class: 'tnum' }, ':30'))),
+        h('tbody', null, rows),
       ),
-    );
-  }
-  const now = toMinutes(nowTime());
-  for (const p of placed) {
-    const task = p.task;
-    const top = yOf(sc, p.start);
-    const bottom = yOf(sc, p.end);
-    if (bottom - top < 1) continue; // inside the folded sleep band
-    const current = isToday && p.start <= now && now < p.end;
-    const tall = Math.max(bottom - top - 2, 22);
-    kids.push(
-      h(
-        'button',
-        {
-          type: 'button',
-          class: `hg-block${tall < 40 ? ' short' : ''}${task.done ? ' done' : ''}${p.overlap ? ' overlap' : ''}${current ? ' current' : ''}`,
-          style: `top:${px(top + 1)};height:${px(tall)};--c:${p.col};--n:${p.cols}`,
-          'data-id': task.id,
-          onclick: () => openSheet('task', { id: task.id }),
-        },
-        h('span', { class: 'hg-title', dir: 'auto' }, task.of ? '↻ ' : '', task.title),
-        h('span', { class: 'hg-time' }, timeEl(rangeText(task.start, task.end))),
-      ),
-    );
-  }
-  if (ui.slot) {
-    const a = toMinutes(ui.slot.start);
-    kids.push(h('div', { class: 'hg-slot', style: `top:${px(yOf(sc, a))};height:${px(yOf(sc, a + 30) - yOf(sc, a))}` }));
-  }
-  if (isToday) {
-    kids.push(h('div', { class: 'hg-now', style: `top:${px(yOf(sc, now))}`, 'aria-label': `${t('now')} ${nowTime()}` }));
-  }
-  $('list').replaceChildren(h('div', { id: 'hgrid', class: 'hgrid', style: `height:${px(sc.height)}` }, kids));
+    ),
+  );
+  $('list').replaceChildren(paper);
 
   if (ui.scrollToNow) {
     ui.scrollToNow = false;
-    const first = scheduled[0] ? toMinutes(scheduled[0].start) : 8 * 60;
-    const target = isToday ? now : first;
-    $('main').scrollTop = Math.max(0, yOf(sc, target) - 96);
+    const hour = isToday ? Math.floor(now / 60) : scheduled[0] ? Number(scheduled[0].start.slice(0, 2)) : 8;
+    const row = $('list').querySelector(`tr[data-hour="${hour}"]`);
+    const main = $('main');
+    if (row) main.scrollTop += row.getBoundingClientRect().top - main.getBoundingClientRect().top - 96;
   }
   if (ui.lastAdded) {
     const el = $('list').querySelector(`[data-id="${ui.lastAdded}"]`);
@@ -470,17 +504,7 @@ function setupGridEvents() {
   setInterval(() => {
     if (!timer.end && !(document.activeElement && document.activeElement.tagName === 'SELECT')) renderTimer();
   }, 60000);
-  $('sleepBtn').addEventListener('click', () => openSheet('sleep'));
-  // A tap on an empty half hour: the next task typed goes there.
-  $('list').addEventListener('click', (e) => {
-    const grid = e.target.closest('#hgrid');
-    if (!grid || e.target.closest('button') || !gridScale) return;
-    const y = e.clientY - grid.getBoundingClientRect().top;
-    const m = minuteAt(gridScale, y, 30);
-    if (m == null) return;
-    ui.slot = { start: fromMinutes(m), end: fromMinutes(m + 30) };
-    render();
-  });
+  $('printBtn').addEventListener('click', () => window.print());
 }
 
 // --- Timer: counts down on the page; the screen stays on while it runs.
@@ -745,7 +769,7 @@ function applyLang() {
   $('week').setAttribute('aria-label', t('dateLabel'));
   $('parseIgnore').textContent = t('ignoreParse');
   $('viewLink').setAttribute('aria-label', t(DAY_VIEW ? 'listView' : 'dayView'));
-  if (DAY_VIEW) $('sleepBtn').setAttribute('aria-label', t('sleepTitle'));
+  if (DAY_VIEW) $('printBtn').setAttribute('aria-label', t('print'));
 }
 
 // ---------------------------------------------------------------------------
@@ -756,7 +780,9 @@ const input = () => $('newTask');
 function renderComposer() {
   const el = input();
   const ph = ui.slot
-    ? t('addAt', { time: ui.slot.start })
+    ? ui.slot.prio
+      ? t('addPriority')
+      : t('addAt', { time: ui.slot.start })
     : ui.day === todayKey()
       ? t('addPlaceholder')
       : t('addPlaceholderDay', { day: shortDay(ui.day) });
@@ -784,9 +810,9 @@ function submitNew() {
   const p = ui.ignoreParse ? null : parseQuickAdd(text, todayKey());
   const use = p && p.found;
   const date = use && p.date ? p.date : ui.day;
-  const slot = !(use && p.start) && ui.slot;
+  const slot = !(use && p.start) && ui.slot && ui.slot.start ? ui.slot : null;
   const id = engine.create({
-    title: use ? p.title : text,
+    title: (ui.slot && ui.slot.prio ? `${PRIORITY} ` : '') + (use ? p.title : text),
     date,
     start: use && p.start ? p.start : slot ? slot.start : null,
     end: use && p.start ? p.end : slot ? slot.end : null,
