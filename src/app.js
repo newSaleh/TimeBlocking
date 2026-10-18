@@ -361,7 +361,9 @@ function nowLine() {
 // ---------------------------------------------------------------------------
 // Hour grid (day/ only): the same tasks laid out on the 24 hours of the day.
 
-const boxIcon = () => svg(['M3 3h18v18H3z', 'M3 3l18 18M21 3L3 21'], 'brand-icon');
+// The timer lives on the page, where the planner's title used to be. The same
+// node is moved into each new render so an open "until" list is not lost.
+const timerBox = h('div', { id: 'timer', class: 'paper-timer' });
 
 function renderGrid() {
   const { scheduled, anytime } = dayTasks(ui.day);
@@ -462,7 +464,7 @@ function renderGrid() {
     h(
       'div',
       { class: 'paper-side' },
-      h('div', { class: 'brand', dir: 'ltr' }, boxIcon(), h('span', null, 'The', h('br'), 'Time', h('br'), 'Box.')),
+      timerBox,
       h('h3', { class: 'paper-label' }, t('topPriorities')),
       h('div', { class: 'prio' }, prioBoxes),
       h('h3', { class: 'paper-label' }, t('brainDump')),
@@ -475,12 +477,13 @@ function renderGrid() {
       h(
         'table',
         { class: 'tb' },
-        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum' }, ':00'), h('th', { class: 'tnum' }, ':30'))),
+        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum', dir: 'ltr' }, ':00'), h('th', { class: 'tnum', dir: 'ltr' }, ':30'))),
         h('tbody', null, rows),
       ),
     ),
   );
   $('list').replaceChildren(paper);
+  if (!timerBox.firstChild) renderTimer();
   applyZoom();
 
   if (ui.scrollToNow) {
@@ -706,15 +709,14 @@ function phoneTimerSheet() {
 }
 
 function renderTimer() {
-  const box = $('timer');
-  if (!box) return;
-  const running = timer.end > Date.now();
-  if (running) {
+  if (!DAY_VIEW) return;
+  const box = timerBox;
+  const phone = h('button', { type: 'button', class: 'timer-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱');
+  if (timer.end > Date.now()) {
     box.replaceChildren(
       h('span', { class: 'timer-left tnum', id: 'timerLeft', role: 'timer' }, countdownText(timer.end - Date.now())),
       h('span', { class: 'timer-until' }, t('timerUntil'), ' ', timeEl(nowTime(new Date(timer.end)))),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
-      h('button', { type: 'button', class: 'text-btn quiet', onclick: stopTimer }, t('timerStop')),
+      h('div', { class: 'timer-row' }, phone, h('button', { type: 'button', class: 'timer-btn timer-stop', onclick: stopTimer }, t('timerStop'))),
     );
     return;
   }
@@ -729,9 +731,8 @@ function renderTimer() {
     untilChoices().map((x) => h('option', { value: x }, x)),
   );
   box.replaceChildren(
-    h('button', { type: 'button', class: 'pill timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')),
-    sel,
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
+    h('span', { class: 'timer-left idle tnum' }, '30:00'),
+    h('div', { class: 'timer-row' }, h('button', { type: 'button', class: 'timer-btn timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')), sel, phone),
   );
 }
 

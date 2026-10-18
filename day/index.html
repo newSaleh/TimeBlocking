@@ -1104,46 +1104,6 @@ a.btn {
   font-size: 14px;
 }
 
-/* ---------- Timer (day/) ---------- */
-.timer {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-top: 1px solid var(--line);
-  padding: 8px max(16px, env(safe-area-inset-right, 0px)) 4px max(16px, env(safe-area-inset-left, 0px));
-  background: var(--page);
-}
-.timer .timer-go {
-  height: var(--tap);
-  padding-inline: 16px;
-  border-radius: 22px;
-  font-size: 16px;
-}
-.timer-select {
-  height: var(--tap);
-  min-width: 0;
-  flex: 1;
-  padding-inline: 12px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: var(--surface);
-  color: var(--fg);
-  font: inherit;
-  font-size: 16px;
-}
-.timer-left {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--accent);
-  direction: ltr;
-}
-.timer-until {
-  flex: 1;
-  color: var(--muted);
-  font-size: 14px;
-}
-
 /* ---------- Time box sheet (day/): a fixed A4 page ----------
    Sized in millimetres like paper, so the screen and the printout match.
    It opens fitted to the width; pinch to zoom in, as in a PDF reader. */
@@ -1163,10 +1123,13 @@ a.btn {
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 10px 30px rgba(20, 30, 60, 0.1);
   display: grid;
-  grid-template-columns: 74mm 1fr;
+  grid-template-columns: 1fr 74mm;
   column-gap: 10mm;
   overflow: hidden;
   font-size: 3.6mm;
+}
+.paper-main {
+  order: -1;
 }
 .paper-side,
 .paper-main {
@@ -1174,24 +1137,66 @@ a.btn {
   flex-direction: column;
   min-height: 0;
 }
-.brand {
+.paper-timer {
+  height: 52mm;
+  box-sizing: border-box;
+  border: 0.3mm solid var(--ink-soft);
+  padding: 3mm;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4mm;
-  height: 26mm;
-  font-size: 7mm;
+  justify-content: center;
+  gap: 2mm;
+}
+.timer-left {
+  font-size: 15mm;
   font-weight: 700;
   line-height: 1;
+  color: var(--accent);
+  direction: ltr;
 }
-.brand-icon {
-  width: 17mm;
-  height: 17mm;
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.2;
+.timer-left.idle {
+  color: var(--ink-soft);
+}
+.timer-until {
+  color: var(--muted);
+  font-size: 3.6mm;
+}
+.timer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2mm;
+  width: 100%;
+}
+.timer-btn,
+.timer-select {
+  height: 10mm;
+  border-radius: 5mm;
+  font-size: 3.6mm;
+  padding-inline: 3mm;
+}
+.timer-btn {
+  background: var(--surface);
+  color: var(--fg);
+}
+.timer-go,
+.timer-stop {
+  flex: 1;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.timer-select {
+  flex: 1 1 100%;
+  order: 2;
+  min-width: 0;
+  border: 0.3mm solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
 }
 .paper-label {
-  margin: 7mm 0 2.5mm;
+  margin: 6mm 0 2.5mm;
   font-size: 3.8mm;
   font-weight: 500;
   color: var(--ink);
@@ -1368,7 +1373,6 @@ a.btn {
   }
   .top,
   .composer,
-  .timer,
   .sheet-layer,
   .toast,
   .gate {
@@ -1399,6 +1403,9 @@ a.btn {
   .tb-cell.now,
   .tb-cell.slot {
     box-shadow: none;
+  }
+  .paper-timer {
+    visibility: hidden;
   }
 }
 
@@ -1435,7 +1442,6 @@ a.btn {
     <p id="status" class="status" role="status" aria-live="polite" hidden></p>
   </header>
   <main id="main" class="main grid-main"><div id="list"></div></main>
-  <div id="timer" class="timer"></div>
   <footer class="composer">
     <div id="parse" class="parse" hidden>
       <span id="parseChip" class="parse-chip tnum"></span>
@@ -3710,7 +3716,9 @@ function nowLine() {
 // ---------------------------------------------------------------------------
 // Hour grid (day/ only): the same tasks laid out on the 24 hours of the day.
 
-const boxIcon = () => svg(['M3 3h18v18H3z', 'M3 3l18 18M21 3L3 21'], 'brand-icon');
+// The timer lives on the page, where the planner's title used to be. The same
+// node is moved into each new render so an open "until" list is not lost.
+const timerBox = h('div', { id: 'timer', class: 'paper-timer' });
 
 function renderGrid() {
   const { scheduled, anytime } = dayTasks(ui.day);
@@ -3811,7 +3819,7 @@ function renderGrid() {
     h(
       'div',
       { class: 'paper-side' },
-      h('div', { class: 'brand', dir: 'ltr' }, boxIcon(), h('span', null, 'The', h('br'), 'Time', h('br'), 'Box.')),
+      timerBox,
       h('h3', { class: 'paper-label' }, t('topPriorities')),
       h('div', { class: 'prio' }, prioBoxes),
       h('h3', { class: 'paper-label' }, t('brainDump')),
@@ -3824,12 +3832,13 @@ function renderGrid() {
       h(
         'table',
         { class: 'tb' },
-        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum' }, ':00'), h('th', { class: 'tnum' }, ':30'))),
+        h('thead', null, h('tr', null, h('th'), h('th', { class: 'tnum', dir: 'ltr' }, ':00'), h('th', { class: 'tnum', dir: 'ltr' }, ':30'))),
         h('tbody', null, rows),
       ),
     ),
   );
   $('list').replaceChildren(paper);
+  if (!timerBox.firstChild) renderTimer();
   applyZoom();
 
   if (ui.scrollToNow) {
@@ -4055,15 +4064,14 @@ function phoneTimerSheet() {
 }
 
 function renderTimer() {
-  const box = $('timer');
-  if (!box) return;
-  const running = timer.end > Date.now();
-  if (running) {
+  if (!DAY_VIEW) return;
+  const box = timerBox;
+  const phone = h('button', { type: 'button', class: 'timer-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱');
+  if (timer.end > Date.now()) {
     box.replaceChildren(
       h('span', { class: 'timer-left tnum', id: 'timerLeft', role: 'timer' }, countdownText(timer.end - Date.now())),
       h('span', { class: 'timer-until' }, t('timerUntil'), ' ', timeEl(nowTime(new Date(timer.end)))),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
-      h('button', { type: 'button', class: 'text-btn quiet', onclick: stopTimer }, t('timerStop')),
+      h('div', { class: 'timer-row' }, phone, h('button', { type: 'button', class: 'timer-btn timer-stop', onclick: stopTimer }, t('timerStop'))),
     );
     return;
   }
@@ -4078,9 +4086,8 @@ function renderTimer() {
     untilChoices().map((x) => h('option', { value: x }, x)),
   );
   box.replaceChildren(
-    h('button', { type: 'button', class: 'pill timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')),
-    sel,
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
+    h('span', { class: 'timer-left idle tnum' }, '30:00'),
+    h('div', { class: 'timer-row' }, h('button', { type: 'button', class: 'timer-btn timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')), sel, phone),
   );
 }
 

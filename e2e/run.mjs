@@ -700,7 +700,7 @@ await step('Time box sheet (day/): same tasks in :00/:30 cells, tap a cell to ad
   // Timer
   await P.click('.timer-go');
   assert(/^(29|30):\d\d$/.test(await P.textContent('#timerLeft')), 'countdown');
-  await P.click('#timer .text-btn');
+  await P.click('.timer-stop');
   await P.waitForSelector('.timer-go');
   assert(await noHorizontalScroll(P), 'no sideways scroll');
   await P.screenshot({ path: `${shots}/17-day-sheet-iphone.png` });
