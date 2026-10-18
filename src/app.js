@@ -457,7 +457,8 @@ function renderGrid() {
   const date = `${weekdayName(ui.day, ui.lang)} ${formatDateNumeric(ui.day)}`;
   const paper = h(
     'div',
-    { class: 'paper', style: `--rows:${rows.length}` },
+    // 297mm page − 26mm margins − 10mm date line − 7mm column heads − room to spare.
+    { class: 'paper', id: 'paper', style: `--rowh:${(250 / rows.length).toFixed(2)}mm` },
     h(
       'div',
       { class: 'paper-side' },
@@ -480,9 +481,11 @@ function renderGrid() {
     ),
   );
   $('list').replaceChildren(paper);
+  applyZoom();
 
   if (ui.scrollToNow) {
     ui.scrollToNow = false;
+    if (!zoomed()) return;
     const hour = isToday ? Math.floor(now / 60) : scheduled[0] ? Number(scheduled[0].start.slice(0, 2)) : 8;
     const row = $('list').querySelector(`tr[data-hour="${hour}"]`);
     const main = $('main');
@@ -495,7 +498,67 @@ function renderGrid() {
   }
 }
 
+// --- Zoom: the page opens fitted to the width; pinch (or ctrl + wheel) to
+// zoom in and out around the fingers, as in a PDF reader.
+
+const zoom = { z: 0, fit: 1 };
+const PAPER_PX = (210 / 25.4) * 96;
+const zoomed = () => zoom.z > zoom.fit * 1.05;
+
+function applyZoom() {
+  const paper = $('paper');
+  if (!paper) return;
+  const main = $('main');
+  zoom.fit = Math.min(1.5, (main.clientWidth - 16) / PAPER_PX);
+  if (!zoom.z || zoom.z < zoom.fit) zoom.z = zoom.fit;
+  paper.style.zoom = String(zoom.z);
+}
+
+function zoomTo(z, cx, cy) {
+  const main = $('main');
+  const r = main.getBoundingClientRect();
+  const x = cx - r.left;
+  const y = cy - r.top;
+  const old = zoom.z;
+  zoom.z = Math.min(zoom.fit * 5, Math.max(zoom.fit, z));
+  $('paper').style.zoom = String(zoom.z);
+  const k = zoom.z / old;
+  main.scrollLeft = (main.scrollLeft + x) * k - x;
+  main.scrollTop = (main.scrollTop + y) * k - y;
+}
+
+function setupZoom() {
+  const main = $('main');
+  let pinch = null;
+  const dist = (e) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  const mid = (e) => [(e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2];
+  main.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) pinch = { d: dist(e), z: zoom.z };
+  }, { passive: true });
+  main.addEventListener('touchmove', (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    zoomTo(pinch.z * (dist(e) / pinch.d), ...mid(e));
+  }, { passive: false });
+  main.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) pinch = null;
+  });
+  // Safari's own page zoom would scale the whole app: keep it on the page.
+  for (const type of ['gesturestart', 'gesturechange']) main.addEventListener(type, (e) => e.preventDefault());
+  main.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    zoomTo(zoom.z * Math.exp(-e.deltaY / 200), e.clientX, e.clientY);
+  }, { passive: false });
+  window.addEventListener('resize', () => {
+    const wasFit = !zoomed();
+    applyZoom();
+    if (wasFit) zoomTo(zoom.fit, 0, 0);
+  });
+}
+
 function setupGridEvents() {
+  setupZoom();
   runTimer();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') runTimer();
@@ -2536,7 +2599,7 @@ function setupEvents() {
   main.addEventListener(
     'touchend',
     (e) => {
-      if (sx == null) return;
+      if (sx == null || (DAY_VIEW && zoomed())) return;
       const p = e.changedTouches[0];
       const dx = p.clientX - sx;
       const dy = p.clientY - sy;
