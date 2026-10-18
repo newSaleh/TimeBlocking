@@ -1,180 +1,180 @@
 {
-  "date": "2026-10-18T11:55:22.275Z",
+  "date": "2026-10-18T12:30:45.948Z",
   "results": [
     {
       "name": "First open: no password, no setup, straight to today",
       "ok": true,
-      "ms": 146
+      "ms": 165
     },
     {
       "name": "1. Add a task in seconds (type + Return)",
       "ok": true,
-      "ms": 105
+      "ms": 120
     },
     {
       "name": "2. Add a task without a time",
       "ok": true,
-      "ms": 35
+      "ms": 43
     },
     {
       "name": "3. Add a task with start and end in one line",
       "ok": true,
-      "ms": 71
+      "ms": 69
     },
     {
       "name": "Quick add understands \"tomorrow\" and can be ignored",
       "ok": true,
-      "ms": 144
+      "ms": 154
     },
     {
       "name": "4. Arabic-Indic digits become 123 (typing, pasting, saved data)",
       "ok": true,
-      "ms": 79
+      "ms": 93
     },
     {
       "name": "5. Change a task time without recreating it",
       "ok": true,
-      "ms": 1577
+      "ms": 1551
     },
     {
       "name": "Overlapping times are flagged quietly, not blocked",
       "ok": true,
-      "ms": 45
+      "ms": 55
     },
     {
       "name": "6. Move a task to tomorrow",
       "ok": true,
-      "ms": 1156
+      "ms": 1152
     },
     {
       "name": "7. Mark done, then not done (one tap each, no confirmation)",
       "ok": true,
-      "ms": 219
+      "ms": 314
     },
     {
       "name": "Delete with undo",
       "ok": true,
-      "ms": 455
+      "ms": 452
     },
     {
       "name": "8. Close and reopen: data is still there",
       "ok": true,
-      "ms": 117
+      "ms": 94
     },
     {
       "name": "Opens with no internet at all (offline cold start)",
       "ok": true,
-      "ms": 217
+      "ms": 207
     },
     {
       "name": "Turn on GitHub sync: clear errors, then one-time setup",
       "ok": true,
-      "ms": 1692
+      "ms": 1719
     },
     {
       "name": "Laptop: opening the recovery link connects it, no password",
       "ok": true,
-      "ms": 188
+      "ms": 178
     },
     {
       "name": "9. Edit on iPhone → appears on laptop, and back",
       "ok": true,
-      "ms": 19422
+      "ms": 19468
     },
     {
       "name": "10. Same task edited on both devices: no silent loss",
       "ok": true,
-      "ms": 8958
+      "ms": 8829
     },
     {
       "name": "11. Offline: keeps working, says so calmly, syncs when back",
       "ok": true,
-      "ms": 1860
+      "ms": 1862
     },
     {
       "name": "A third device that skips the link is told to use it; pasting it works",
       "ok": true,
-      "ms": 8513
+      "ms": 8533
     },
     {
       "name": "Earlier open tasks are offered, never moved automatically",
       "ok": true,
-      "ms": 418
+      "ms": 388
     },
     {
       "name": "Tapping empty space in the day opens the composer",
       "ok": true,
-      "ms": 19
+      "ms": 24
     },
     {
       "name": "Import from Reminders: paste, tomorrow pre-selected, no duplicates",
       "ok": true,
-      "ms": 3042
+      "ms": 3859
     },
     {
       "name": "Pasted Shortcut text picks its own day (today here)",
       "ok": true,
-      "ms": 635
+      "ms": 422
     },
     {
       "name": "Shortcut link (#import=...) opens the import screen filled in",
       "ok": true,
-      "ms": 267
+      "ms": 295
     },
     {
       "name": "Repeat daily: shows on the next days, each day keeps its own done state, syncs",
       "ok": true,
-      "ms": 6884
+      "ms": 6339
     },
     {
       "name": "Repeat on certain days, then stop it from a later day",
       "ok": true,
-      "ms": 1319
+      "ms": 1326
     },
     {
       "name": "Copy a task to the next day",
       "ok": true,
-      "ms": 684
+      "ms": 709
     },
     {
       "name": "Long press on a task asks, then deletes (with undo)",
       "ok": true,
-      "ms": 2393
+      "ms": 2443
     },
     {
       "name": "Light / dark switch, and a red delete button",
       "ok": true,
-      "ms": 2963
+      "ms": 2398
     },
     {
       "name": "12. Arabic RTL and English LTR",
       "ok": true,
-      "ms": 1972
+      "ms": 2182
     },
     {
       "name": "13. Small iPhone, 320px, dark mode and laptop layouts",
       "ok": true,
-      "ms": 753
+      "ms": 836
     },
     {
       "name": "Laptop keyboard: n focuses the composer, arrows change day",
       "ok": true,
-      "ms": 148
+      "ms": 170
     },
     {
       "name": "Export a plain copy",
       "ok": true,
-      "ms": 127
+      "ms": 151
     },
     {
       "name": "Installable: manifest, icons and service worker are served",
       "ok": true,
-      "ms": 16
+      "ms": 21
     },
     {
       "name": "Inside claude.ai the same page syncs through the artifact database",
       "ok": true,
-      "ms": 569
+      "ms": 612
     },
     {
       "name": "14. No notifications and no permission prompts",
@@ -189,12 +189,12 @@
     {
       "name": "Time box sheet (day/): same tasks in :00/:30 cells, tap a cell to add, priorities, timer, A4 print",
       "ok": true,
-      "ms": 1900
+      "ms": 2110
     },
     {
       "name": "16. Only GitHub is contacted: no third parties, no errors, no task text in logs",
       "ok": true,
-      "ms": 0
+      "ms": 1
     }
   ]
 }

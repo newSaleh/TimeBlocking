@@ -1131,6 +1131,10 @@ a.btn {
 .paper-main {
   order: -1;
 }
+.day-arrows {
+  display: flex;
+  gap: 2px;
+}
 .paper-side,
 .paper-main {
   display: flex;
@@ -1391,9 +1395,11 @@ a.btn {
     background: #fff !important;
   }
   .paper {
-    zoom: 1 !important;
-    height: 295mm;
-    margin: 0;
+    /* Safari keeps its own margins (address and date): shrink the page to
+       fit inside them, whatever the browser. */
+    zoom: 0.86 !important;
+    height: 297mm;
+    margin: 0 auto;
     box-shadow: none;
     break-inside: avoid;
     page-break-inside: avoid;
@@ -5917,7 +5923,8 @@ function setupEvents() {
     }
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey || ui.sheet || !$('gate').hidden) return;
-    const rtl = ui.lang === 'ar';
+    // On the paper page time runs left to right, as on the arrows.
+    const rtl = ui.lang === 'ar' && !DAY_VIEW;
     if (e.key === 'n' || e.key === '/') {
       e.preventDefault();
       input().focus();
@@ -5958,7 +5965,7 @@ function setupEvents() {
       const dy = p.clientY - sy;
       sx = null;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const forward = ui.lang === 'ar' ? dx > 0 : dx < 0;
+      const forward = ui.lang === 'ar' && !DAY_VIEW ? dx > 0 : dx < 0;
       goTo(addDays(ui.day, forward ? 1 : -1));
     },
     { passive: true },

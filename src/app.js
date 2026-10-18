@@ -2565,7 +2565,8 @@ function setupEvents() {
     }
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey || ui.sheet || !$('gate').hidden) return;
-    const rtl = ui.lang === 'ar';
+    // On the paper page time runs left to right, as on the arrows.
+    const rtl = ui.lang === 'ar' && !DAY_VIEW;
     if (e.key === 'n' || e.key === '/') {
       e.preventDefault();
       input().focus();
@@ -2606,7 +2607,7 @@ function setupEvents() {
       const dy = p.clientY - sy;
       sx = null;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const forward = ui.lang === 'ar' ? dx > 0 : dx < 0;
+      const forward = ui.lang === 'ar' && !DAY_VIEW ? dx > 0 : dx < 0;
       goTo(addDays(ui.day, forward ? 1 : -1));
     },
     { passive: true },

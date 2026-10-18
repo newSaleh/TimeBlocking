@@ -1131,6 +1131,10 @@ a.btn {
 .paper-main {
   order: -1;
 }
+.day-arrows {
+  display: flex;
+  gap: 2px;
+}
 .paper-side,
 .paper-main {
   display: flex;
@@ -1391,9 +1395,11 @@ a.btn {
     background: #fff !important;
   }
   .paper {
-    zoom: 1 !important;
-    height: 295mm;
-    margin: 0;
+    /* Safari keeps its own margins (address and date): shrink the page to
+       fit inside them, whatever the browser. */
+    zoom: 0.86 !important;
+    height: 297mm;
+    margin: 0 auto;
     box-shadow: none;
     break-inside: avoid;
     page-break-inside: avoid;
@@ -1419,12 +1425,14 @@ a.btn {
       </button>
       <div class="top-actions">
         <button id="todayBtn" class="pill" type="button" hidden></button>
-        <button id="prevBtn" class="icon-btn" type="button">
-          <svg class="icon flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
-        </button>
-        <button id="nextBtn" class="icon-btn" type="button">
-          <svg class="icon flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
-        </button>
+        <span class="day-arrows" dir="ltr">
+          <button id="prevBtn" class="icon-btn" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <button id="nextBtn" class="icon-btn" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </span>
         <button id="printBtn" class="icon-btn" type="button">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/></svg>
         </button>
@@ -5920,7 +5928,8 @@ function setupEvents() {
     }
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey || ui.sheet || !$('gate').hidden) return;
-    const rtl = ui.lang === 'ar';
+    // On the paper page time runs left to right, as on the arrows.
+    const rtl = ui.lang === 'ar' && !DAY_VIEW;
     if (e.key === 'n' || e.key === '/') {
       e.preventDefault();
       input().focus();
@@ -5961,7 +5970,7 @@ function setupEvents() {
       const dy = p.clientY - sy;
       sx = null;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const forward = ui.lang === 'ar' ? dx > 0 : dx < 0;
+      const forward = ui.lang === 'ar' && !DAY_VIEW ? dx > 0 : dx < 0;
       goTo(addDays(ui.day, forward ? 1 : -1));
     },
     { passive: true },
