@@ -35,7 +35,7 @@ export function startServer(port = 4173) {
       return;
     }
     if (req.method === 'GET') {
-      const rel = normalize(url.pathname === '/' ? '/index.html' : url.pathname).replace(/^(\.\.[/\\])+/, '');
+      const rel = normalize(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname).replace(/^(\.\.[/\\])+/, '');
       const file = join('site', rel);
       if (existsSync(file)) {
         res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });

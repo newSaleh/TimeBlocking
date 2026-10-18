@@ -665,6 +665,50 @@ await step('15. GitHub holds ciphertext only', async () => {
   assert(!dump.includes(TOKEN), 'token not stored in repo');
 });
 
+await step('Day by the hour (day/): same tasks on a 24-hour grid, tap a slot to add, timer', async () => {
+  await addTask(P, 'تمرين 07:00-08:00');
+  await P.click('#viewLink');
+  await P.waitForURL('**/day/');
+  const block = P.locator('.hg-block', { hasText: 'تمرين' });
+  await block.waitFor();
+  assert((await P.locator('.hg-hour').count()) === 24, '24 hours');
+  await P.waitForSelector('.hg-now');
+  // Tap the empty half hour at 15:30, then type: the task lands there.
+  const r = await P.evaluate(() => {
+    document.getElementById('main').scrollTop = 15 * 64;
+    const b = document.getElementById('hgrid').getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + 15.5 * 64 + 10 };
+  });
+  await P.mouse.click(r.x, r.y);
+  await poll(async () => (await P.getAttribute('#newTask', 'placeholder')).includes('15:30'), 'slot placeholder');
+  await P.keyboard.type('مراجعة');
+  await P.keyboard.press('Enter');
+  await P.locator('.hg-block', { hasText: 'مراجعة' }).waitFor();
+  assert((await P.locator('.hg-block', { hasText: 'مراجعة' }).textContent()).includes('15:30–16:00'), 'slot time');
+  await block.click();
+  await P.waitForSelector('#taskTitle');
+  await closeSheet(P);
+  // Sleep hours fold away.
+  await P.click('#sleepBtn');
+  await P.click('#sheet [data-k="sleep-from-23"]');
+  await P.click('#sheet [data-k="sleep-to-6"]');
+  await closeSheet(P);
+  await poll(async () => (await P.locator('.hg-hour').count()) === 17, 'sleep folded');
+  await P.click('#sheet [data-k="close"]').catch(() => {});
+  await P.click('#sleepBtn');
+  await P.click('#sheet [data-k="sleep-off"]');
+  await closeSheet(P);
+  // Timer
+  await P.click('.timer-go');
+  assert(/^(29|30):\d\d$/.test(await P.textContent('#timerLeft')), 'countdown');
+  await P.click('#timer .text-btn');
+  await P.waitForSelector('.timer-go');
+  assert(await noHorizontalScroll(P), 'no sideways scroll');
+  await P.screenshot({ path: `${shots}/17-day-grid-iphone.png` });
+  await P.click('#viewLink');
+  await row(P, 'مراجعة').waitFor();
+});
+
 await step('16. Only GitHub is contacted: no third parties, no errors, no task text in logs', async () => {
   for (const d of [phone, laptop]) {
     assert(d.external.length === 0, 'external: ' + d.external.join(', '));
