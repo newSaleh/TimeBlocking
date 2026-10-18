@@ -1248,3 +1248,43 @@ a.btn {
   color: var(--muted);
   font-size: 14px;
 }
+
+/* ---------- Timer (day/) ---------- */
+.timer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 8px max(16px, env(safe-area-inset-right, 0px)) 4px max(16px, env(safe-area-inset-left, 0px));
+  background: var(--page);
+}
+.timer .timer-go {
+  height: var(--tap);
+  padding-inline: 16px;
+  border-radius: 22px;
+  font-size: 16px;
+}
+.timer-select {
+  height: var(--tap);
+  min-width: 0;
+  flex: 1;
+  padding-inline: 12px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px;
+}
+.timer-left {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--accent);
+  direction: ltr;
+}
+.timer-until {
+  flex: 1;
+  color: var(--muted);
+  font-size: 14px;
+}

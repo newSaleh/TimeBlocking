@@ -462,6 +462,14 @@ function renderGrid() {
 }
 
 function setupGridEvents() {
+  runTimer();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') runTimer();
+  });
+  // Keep the "until" choices ahead of the clock.
+  setInterval(() => {
+    if (!timer.end && !(document.activeElement && document.activeElement.tagName === 'SELECT')) renderTimer();
+  }, 60000);
   $('sleepBtn').addEventListener('click', () => openSheet('sleep'));
   // A tap on an empty half hour: the next task typed goes there.
   $('list').addEventListener('click', (e) => {
@@ -473,6 +481,136 @@ function setupGridEvents() {
     ui.slot = { start: fromMinutes(m), end: fromMinutes(m + 30) };
     render();
   });
+}
+
+// --- Timer: counts down on the page; the screen stays on while it runs.
+// Safari does not ring a web timer on a locked phone, so it is only shown
+// while the page is open.
+
+const timer = { end: Number(prefs.get('timerEnd')) || 0, iv: null, lock: null, audio: null };
+
+function startTimer(ms) {
+  timer.end = Date.now() + ms;
+  prefs.set('timerEnd', String(timer.end));
+  // Unlock audio inside the tap so the bell can play later.
+  try {
+    timer.audio = timer.audio || new (window.AudioContext || window.webkitAudioContext)();
+    timer.audio.resume();
+  } catch (_) {}
+  runTimer();
+}
+
+function stopTimer() {
+  timer.end = 0;
+  prefs.set('timerEnd', '');
+  runTimer();
+}
+
+async function keepAwake(on) {
+  try {
+    if (on && !timer.lock && navigator.wakeLock && document.visibilityState === 'visible') {
+      timer.lock = await navigator.wakeLock.request('screen');
+      timer.lock.addEventListener('release', () => (timer.lock = null));
+    } else if (!on && timer.lock) {
+      await timer.lock.release();
+      timer.lock = null;
+    }
+  } catch (_) {}
+}
+
+function bell() {
+  const ac = timer.audio;
+  if (!ac) return;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      const at = ac.currentTime + i * 0.6;
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.3, at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+      o.connect(g).connect(ac.destination);
+      o.start(at);
+      o.stop(at + 0.5);
+    }
+  } catch (_) {}
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+}
+
+function countdownText(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const pad = (n) => String(n).padStart(2, '0');
+  const hr = Math.floor(s / 3600);
+  return `${hr ? hr + ':' : ''}${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+function runTimer() {
+  clearInterval(timer.iv);
+  timer.iv = null;
+  const left = timer.end - Date.now();
+  if (timer.end && left > 0) {
+    timer.iv = setInterval(() => {
+      const ms = timer.end - Date.now();
+      const el = $('timerLeft');
+      if (ms <= 0) {
+        bell();
+        toast(t('timerDone'));
+        stopTimer();
+      } else if (el) el.textContent = countdownText(ms);
+    }, 1000);
+    keepAwake(true);
+  } else {
+    if (timer.end) {
+      timer.end = 0;
+      prefs.set('timerEnd', '');
+    }
+    keepAwake(false);
+  }
+  renderTimer();
+}
+
+// Choices for "until": every half hour for the next twelve hours.
+function untilChoices() {
+  const now = toMinutes(nowTime());
+  const first = Math.floor(now / 30) * 30 + 30;
+  return Array.from({ length: 24 }, (_, i) => fromMinutes(first + i * 30));
+}
+
+function untilMs(time) {
+  const d = new Date();
+  const [hr, mn] = time.split(':').map(Number);
+  const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hr, mn, 0, 0);
+  if (at <= d) at.setDate(at.getDate() + 1);
+  return at - d;
+}
+
+function renderTimer() {
+  const box = $('timer');
+  if (!box) return;
+  const running = timer.end > Date.now();
+  if (running) {
+    box.replaceChildren(
+      h('span', { class: 'timer-left tnum', id: 'timerLeft', role: 'timer' }, countdownText(timer.end - Date.now())),
+      h('span', { class: 'timer-until' }, t('timerUntil'), ' ', timeEl(nowTime(new Date(timer.end)))),
+      h('button', { type: 'button', class: 'text-btn quiet', onclick: stopTimer }, t('timerStop')),
+    );
+    return;
+  }
+  const sel = h(
+    'select',
+    {
+      class: 'timer-select tnum',
+      'aria-label': t('timerUntilPick'),
+      onchange: (e) => e.target.value && startTimer(untilMs(e.target.value)),
+    },
+    h('option', { value: '' }, t('timerUntilPick')),
+    untilChoices().map((x) => h('option', { value: x }, x)),
+  );
+  box.replaceChildren(
+    h('button', { type: 'button', class: 'pill timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')),
+    sel,
+  );
 }
 
 function sleepSheet() {
