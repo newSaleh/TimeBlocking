@@ -585,6 +585,39 @@ function untilMs(time) {
   return at - d;
 }
 
+// The Clock app's own timer rings on a locked iPhone; a shortcut starts it.
+const TIMER_SHORTCUT = 'Pocket Time Timer';
+const TIMER_SHORTCUT_URL = 'https://newsaleh.github.io/TimeBlocking/shortcut/Pocket%20Time%20Timer.shortcut';
+
+function phoneTimer() {
+  if (!prefs.get('timerShortcut')) return openSheet('phoneTimer');
+  const left = timer.end - Date.now();
+  const minutes = left > 0 ? Math.max(1, Math.round(left / 60000)) : 30;
+  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(TIMER_SHORTCUT)}&input=text&text=${minutes}`;
+}
+
+function phoneTimerSheet() {
+  return [
+    sheetHead(t('phoneTimer')),
+    h('p', { class: 'sheet-hint' }, t('phoneTimerHint')),
+    h('a', { class: 'btn', href: TIMER_SHORTCUT_URL, target: '_blank', rel: 'noopener', 'data-k': 'getTimer' }, t('shortcutGet')),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'text-btn',
+        'data-k': 'haveTimer',
+        onclick: () => {
+          prefs.set('timerShortcut', '1');
+          closeSheet();
+          phoneTimer();
+        },
+      },
+      t('phoneTimerHave'),
+    ),
+  ];
+}
+
 function renderTimer() {
   const box = $('timer');
   if (!box) return;
@@ -593,6 +626,7 @@ function renderTimer() {
     box.replaceChildren(
       h('span', { class: 'timer-left tnum', id: 'timerLeft', role: 'timer' }, countdownText(timer.end - Date.now())),
       h('span', { class: 'timer-until' }, t('timerUntil'), ' ', timeEl(nowTime(new Date(timer.end)))),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
       h('button', { type: 'button', class: 'text-btn quiet', onclick: stopTimer }, t('timerStop')),
     );
     return;
@@ -610,6 +644,7 @@ function renderTimer() {
   box.replaceChildren(
     h('button', { type: 'button', class: 'pill timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')),
     sel,
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱'),
   );
 }
 
@@ -856,7 +891,7 @@ function renderSheet(first) {
   if (s.kind === 'task') renderTaskSheet(first);
   else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
-    const builders = { sleep: sleepSheet, settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
+    const builders = { sleep: sleepSheet, phoneTimer: phoneTimerSheet, settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
   }
   if (focusKey && !first) {
