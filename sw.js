@@ -1,8 +1,8 @@
 // Offline support: the app shell is cached so Pocket Time opens without a
 // connection. Only this site's own files are cached; sync requests to the
 // GitHub API are never touched.
-const CACHE = 'pocket-time-4e3b4b9dab85';
-const FILES = ["./","index.html","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
+const CACHE = 'pocket-time-63de1c3c7ff4';
+const FILES = ["./","index.html","day/","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -22,7 +22,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  const key = req.mode === 'navigate' ? './' : req;
+  // Each page is cached under its own folder: ./ and day/.
+  const key = req.mode === 'navigate' ? (/\/day\/(index\.html)?$/.test(new URL(req.url).pathname) ? 'day/' : './') : req;
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(key, { ignoreSearch: true });

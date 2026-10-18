@@ -1,6 +1,16 @@
 // Interface text. Arabic is written as Arabic, not translated from English.
 
 const AR = {
+  dayView: 'يومي بالساعات',
+  listView: 'القائمة',
+  addAt: 'أضف مهمة الساعة {time}…',
+  freeTime: 'وقت فارغ · {d}',
+  sleepTitle: 'ساعات النوم',
+  sleepHint: 'تُطوى هذه الساعات في شريط صغير لتوفير المساحة.',
+  sleepFrom: 'أنام من الساعة',
+  sleepTo: 'وأستيقظ الساعة',
+  sleepOff: 'إظهار كل الساعات',
+  sleepBand: 'نوم',
   repeatLabel: 'التكرار',
   repeatNone: 'لا يتكرر',
   repeatDaily: 'يوميًا',
@@ -172,6 +182,16 @@ const AR = {
 };
 
 const EN = {
+  dayView: 'Day by the hour',
+  listView: 'List',
+  addAt: 'Add a task at {time}…',
+  freeTime: 'Free · {d}',
+  sleepTitle: 'Sleep hours',
+  sleepHint: 'These hours fold into a thin band to save space.',
+  sleepFrom: 'Sleep from',
+  sleepTo: 'Wake up at',
+  sleepOff: 'Show all hours',
+  sleepBand: 'Sleep',
   repeatLabel: 'Repeat',
   repeatNone: 'Never',
   repeatDaily: 'Daily',

@@ -25,6 +25,7 @@ import { translator } from './i18n.js';
 import { SyncEngine, occursOn, occurrenceId, parseOccurrenceId } from './sync.js';
 import { openIdbStore, memoryStore } from './storage.js';
 import { claudeRemote, githubRemote } from './remote.js';
+import { segments, scale, yOf, minuteAt, layoutColumns, gaps, DAY_MIN } from './grid.js';
 import { newVault, importVaultKey, encodePairing, decodePairing, randomId } from './crypto.js';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,9 @@ const ui = {
   picker: null,
   ignoreParse: false,
   lastAdded: null,
+  slot: null,
+  sleep: parseSleep(prefs.get('sleep')),
+  scrollToNow: true,
 };
 let t = translator(ui.lang);
 let engine = null;
@@ -63,6 +67,13 @@ let storageWarning = false;
 const vault = { data: null, remote: null, mismatch: false, downloads: null };
 
 const $ = (id) => document.getElementById(id);
+// The same app, laid out hour by hour, at day/.
+const DAY_VIEW = document.getElementById('app').dataset.view === 'day';
+
+function parseSleep(v) {
+  const m = /^(\d\d:\d\d)-(\d\d:\d\d)$/.exec(v || '');
+  return m ? { from: m[1], to: m[2] } : null;
+}
 
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -161,8 +172,10 @@ function renderHeader() {
 function goTo(key) {
   if (key === ui.day) return;
   ui.day = key;
+  ui.slot = null;
+  ui.scrollToNow = DAY_VIEW;
   render();
-  $('main').scrollTop = 0;
+  if (!DAY_VIEW) $('main').scrollTop = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +359,161 @@ function nowLine() {
 }
 
 // ---------------------------------------------------------------------------
+// Hour grid (day/ only): the same tasks laid out on the 24 hours of the day.
+
+let gridScale = null;
+const px = (n) => `${Math.round(n)}px`;
+
+function renderGrid() {
+  const { scheduled, anytime } = dayTasks(ui.day);
+  const isToday = ui.day === todayKey();
+  const sc = scale(segments(ui.sleep));
+  gridScale = sc;
+
+  const strip = $('strip');
+  strip.hidden = !anytime.length;
+  strip.replaceChildren(
+    ...anytime.map((x) =>
+      h(
+        'button',
+        { type: 'button', class: `chip-task${x.done ? ' done' : ''}`, dir: 'auto', 'data-id': x.id, onclick: () => openSheet('task', { id: x.id }) },
+        x.of ? h('span', { class: 'rep-mark', 'aria-hidden': 'true' }, '↻ ') : null,
+        x.title,
+      ),
+    ),
+  );
+
+  const kids = [];
+  for (const sg of sc.segs) {
+    if (sg.sleep) {
+      const hiddenCount = scheduled.filter((x) => {
+        const m = toMinutes(x.start);
+        return m >= sg.from && m < sg.to;
+      }).length;
+      kids.push(
+        h(
+          'button',
+          { type: 'button', class: 'hg-sleep', style: `top:${px(sg.y)};height:${px(sg.h)}`, onclick: () => openSheet('sleep') },
+          h('span', null, '☾ ', t('sleepBand'), ' ', timeEl(rangeText(fromMinutes(sg.from), fromMinutes(sg.to % DAY_MIN)))),
+          hiddenCount ? h('span', { class: 'tag' }, String(hiddenCount)) : null,
+        ),
+      );
+      continue;
+    }
+    for (let m = Math.ceil(sg.from / 60) * 60; m < sg.to; m += 60) {
+      kids.push(h('div', { class: 'hg-hour', style: `top:${px(yOf(sc, m))}` }, h('span', { class: 'hg-label' }, timeEl(fromMinutes(m)))));
+    }
+  }
+
+  const placed = layoutColumns(scheduled);
+  for (const [a, b] of gaps(placed, sc.segs, 60)) {
+    if (isToday && b <= toMinutes(nowTime())) continue;
+    kids.push(
+      h(
+        'div',
+        { class: 'hg-gap', style: `top:${px(yOf(sc, a) + 2)};height:${px(yOf(sc, b) - yOf(sc, a) - 4)}` },
+        h('span', null, t('freeTime', { d: formatDuration(b - a, ui.lang) })),
+      ),
+    );
+  }
+  const now = toMinutes(nowTime());
+  for (const p of placed) {
+    const task = p.task;
+    const top = yOf(sc, p.start);
+    const bottom = yOf(sc, p.end);
+    if (bottom - top < 1) continue; // inside the folded sleep band
+    const current = isToday && p.start <= now && now < p.end;
+    const tall = Math.max(bottom - top - 2, 22);
+    kids.push(
+      h(
+        'button',
+        {
+          type: 'button',
+          class: `hg-block${tall < 40 ? ' short' : ''}${task.done ? ' done' : ''}${p.overlap ? ' overlap' : ''}${current ? ' current' : ''}`,
+          style: `top:${px(top + 1)};height:${px(tall)};--c:${p.col};--n:${p.cols}`,
+          'data-id': task.id,
+          onclick: () => openSheet('task', { id: task.id }),
+        },
+        h('span', { class: 'hg-title', dir: 'auto' }, task.of ? '↻ ' : '', task.title),
+        h('span', { class: 'hg-time' }, timeEl(rangeText(task.start, task.end))),
+      ),
+    );
+  }
+  if (ui.slot) {
+    const a = toMinutes(ui.slot.start);
+    kids.push(h('div', { class: 'hg-slot', style: `top:${px(yOf(sc, a))};height:${px(yOf(sc, a + 30) - yOf(sc, a))}` }));
+  }
+  if (isToday) {
+    kids.push(h('div', { class: 'hg-now', style: `top:${px(yOf(sc, now))}`, 'aria-label': `${t('now')} ${nowTime()}` }));
+  }
+  $('list').replaceChildren(h('div', { id: 'hgrid', class: 'hgrid', style: `height:${px(sc.height)}` }, kids));
+
+  if (ui.scrollToNow) {
+    ui.scrollToNow = false;
+    const first = scheduled[0] ? toMinutes(scheduled[0].start) : 8 * 60;
+    const target = isToday ? now : first;
+    $('main').scrollTop = Math.max(0, yOf(sc, target) - 96);
+  }
+  if (ui.lastAdded) {
+    const el = $('list').querySelector(`[data-id="${ui.lastAdded}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+    ui.lastAdded = null;
+  }
+}
+
+function setupGridEvents() {
+  $('sleepBtn').addEventListener('click', () => openSheet('sleep'));
+  // A tap on an empty half hour: the next task typed goes there.
+  $('list').addEventListener('click', (e) => {
+    const grid = e.target.closest('#hgrid');
+    if (!grid || e.target.closest('button') || !gridScale) return;
+    const y = e.clientY - grid.getBoundingClientRect().top;
+    const m = minuteAt(gridScale, y, 30);
+    if (m == null) return;
+    ui.slot = { start: fromMinutes(m), end: fromMinutes(m + 30) };
+    render();
+  });
+}
+
+function sleepSheet() {
+  const cur = ui.sleep || { from: '23:00', to: '06:00' };
+  const pad = (n) => String(n).padStart(2, '0');
+  const set = (v) => {
+    ui.sleep = v;
+    prefs.set('sleep', v ? `${v.from}-${v.to}` : '');
+    ui.scrollToNow = true;
+    render();
+  };
+  const hours = (which) =>
+    h(
+      'div',
+      { class: 'grid', dir: 'ltr' },
+      Array.from({ length: 24 }, (_, hr) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'tnum',
+            'data-k': `sleep-${which}-${hr}`,
+            'aria-pressed': String(!!ui.sleep && cur[which] === `${pad(hr)}:00`),
+            onclick: () => set({ ...cur, [which]: `${pad(hr)}:00` }),
+          },
+          pad(hr),
+        ),
+      ),
+    );
+  return [
+    sheetHead(t('sleepTitle')),
+    h('p', { class: 'sheet-hint' }, t('sleepHint')),
+    h('h3', { class: 'field-label' }, t('sleepFrom')),
+    h('div', { class: 'picker' }, hours('from')),
+    h('h3', { class: 'field-label' }, t('sleepTo')),
+    h('div', { class: 'picker' }, hours('to')),
+    h('button', { type: 'button', class: 'text-btn', 'data-k': 'sleep-off', 'aria-pressed': String(!ui.sleep), onclick: () => set(null) }, t('sleepOff')),
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Status line: quiet unless something needs saying.
 
 let pendingSince = null;
@@ -382,7 +550,8 @@ function render() {
   requestAnimationFrame(() => {
     renderQueued = false;
     renderHeader();
-    renderList();
+    if (DAY_VIEW) renderGrid();
+    else renderList();
     renderStatus();
     renderComposer();
     if (ui.sheet) renderSheet(false);
@@ -402,6 +571,8 @@ function applyLang() {
   $('newTask').setAttribute('aria-label', t('addPlaceholder'));
   $('week').setAttribute('aria-label', t('dateLabel'));
   $('parseIgnore').textContent = t('ignoreParse');
+  $('viewLink').setAttribute('aria-label', t(DAY_VIEW ? 'listView' : 'dayView'));
+  if (DAY_VIEW) $('sleepBtn').setAttribute('aria-label', t('sleepTitle'));
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +582,11 @@ const input = () => $('newTask');
 
 function renderComposer() {
   const el = input();
-  const ph = ui.day === todayKey() ? t('addPlaceholder') : t('addPlaceholderDay', { day: shortDay(ui.day) });
+  const ph = ui.slot
+    ? t('addAt', { time: ui.slot.start })
+    : ui.day === todayKey()
+      ? t('addPlaceholder')
+      : t('addPlaceholderDay', { day: shortDay(ui.day) });
   if (el.placeholder !== ph) el.placeholder = ph;
   const text = el.value.trim();
   $('addBtn').disabled = !text || !engine;
@@ -436,12 +611,14 @@ function submitNew() {
   const p = ui.ignoreParse ? null : parseQuickAdd(text, todayKey());
   const use = p && p.found;
   const date = use && p.date ? p.date : ui.day;
+  const slot = !(use && p.start) && ui.slot;
   const id = engine.create({
     title: use ? p.title : text,
     date,
-    start: use ? p.start : null,
-    end: use ? p.end : null,
+    start: use && p.start ? p.start : slot ? slot.start : null,
+    end: use && p.start ? p.end : slot ? slot.end : null,
   });
+  ui.slot = null;
   el.value = '';
   ui.ignoreParse = false;
   prefs.set('draft', '');
@@ -461,6 +638,12 @@ function setupComposer() {
     if (!el.value.trim()) ui.ignoreParse = false;
     prefs.set('draft', el.value);
     renderComposer();
+  });
+  el.addEventListener('blur', () => {
+    if (ui.slot && !el.value.trim()) {
+      ui.slot = null;
+      render();
+    }
   });
   $('composer').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -535,7 +718,7 @@ function renderSheet(first) {
   if (s.kind === 'task') renderTaskSheet(first);
   else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
-    const builders = { settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
+    const builders = { sleep: sleepSheet, settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
   }
   if (focusKey && !first) {
@@ -2043,7 +2226,7 @@ async function pairFromAddress() {
 function registerServiceWorker() {
   if (window.claude || !('serviceWorker' in navigator)) return;
   if (!/^https:$/.test(location.protocol) && location.hostname !== 'localhost') return;
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register(DAY_VIEW ? '../sw.js' : 'sw.js').catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -2059,6 +2242,7 @@ function setupEvents() {
     openSheet('calendar');
   });
   $('backdrop').addEventListener('click', closeSheet);
+  if (DAY_VIEW) setupGridEvents();
   // Long press (or right click) on a task: ask, then delete.
   const list = $('list');
   let pressTimer = null;

@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
-const ORDER = ['digits', 'dates', 'parse', 'crdt', 'crypto', 'storage', 'sync', 'remote', 'i18n', 'app'];
+const ORDER = ['digits', 'dates', 'parse', 'crdt', 'crypto', 'storage', 'sync', 'remote', 'i18n', 'grid', 'app'];
 
 const seen = new Map();
 const parts = ORDER.map((name) => {
@@ -29,7 +29,9 @@ const script = `(function () {\n'use strict';\n${parts.join('\n')}\n})();`;
 if (script.includes('</script')) throw new Error('Script contains a closing script tag');
 
 const styles = readFileSync('src/styles.css', 'utf8');
-const page = readFileSync('src/index.html', 'utf8').replace('/*STYLES*/', () => styles).replace('/*SCRIPT*/', () => script);
+const fill = (file) => readFileSync(file, 'utf8').replace('/*STYLES*/', () => styles).replace('/*SCRIPT*/', () => script);
+const page = fill('src/index.html');
+const dayPage = fill('src/day.html');
 
 const BASE_HEAD =
   '<meta charset="utf-8">' +
@@ -51,14 +53,18 @@ const SITE_HEAD =
   '<link rel="apple-touch-icon" href="apple-touch-icon.png">' +
   '<link rel="icon" href="icon-192.png">';
 
-const doc = (head) => `<!doctype html><html lang="ar" dir="rtl"><head>${head}</head><body>${page}</body></html>`;
+const doc = (head, body = page) => `<!doctype html><html lang="ar" dir="rtl"><head>${head}</head><body>${body}</body></html>`;
 
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/pocket-time.html', page);
 writeFileSync('dist/standalone.html', doc(BASE_HEAD));
+mkdirSync('dist/day', { recursive: true });
+writeFileSync('dist/day/index.html', doc(BASE_HEAD, dayPage));
 
 const index = doc(SITE_HEAD);
-const version = createHash('sha256').update(index).digest('hex').slice(0, 12);
+// The hour-by-hour page lives one folder down and shares the same files.
+const dayIndex = doc(SITE_HEAD.replace(/href="(?!https?:)/g, 'href="../'), dayPage);
+const version = createHash('sha256').update(index + dayIndex).digest('hex').slice(0, 12);
 const icons = ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 const manifest = {
   name: 'Pocket Time',
@@ -79,16 +85,19 @@ const manifest = {
 };
 const sw = readFileSync('src/sw.js', 'utf8')
   .replace('__VERSION__', version)
-  .replace('__FILES__', JSON.stringify(['./', 'index.html', 'manifest.webmanifest', ...icons]));
+  .replace('__FILES__', JSON.stringify(['./', 'index.html', 'day/', 'manifest.webmanifest', ...icons]));
 
 mkdirSync('site', { recursive: true });
 writeFileSync('site/index.html', index);
 writeFileSync('site/404.html', index);
+mkdirSync('site/day', { recursive: true });
+mkdirSync('day', { recursive: true });
+writeFileSync('site/day/index.html', dayIndex);
 writeFileSync('site/manifest.webmanifest', JSON.stringify(manifest, null, 2));
 writeFileSync('site/sw.js', sw);
 writeFileSync('site/.nojekyll', '');
 for (const f of icons) copyFileSync(`assets/${f}`, `site/${f}`);
 
 // GitHub Pages serves the repository root of main: publish the app there.
-for (const f of ['index.html', '404.html', 'manifest.webmanifest', 'sw.js', '.nojekyll', ...icons]) copyFileSync(`site/${f}`, f);
+for (const f of ['index.html', '404.html', 'manifest.webmanifest', 'sw.js', '.nojekyll', 'day/index.html', ...icons]) copyFileSync(`site/${f}`, f);
 console.log(`site/index.html  ${(index.length / 1024).toFixed(1)} KB  (version ${version})`);

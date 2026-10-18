@@ -1087,3 +1087,164 @@ a.btn {
   font-size: 16px;
   color: var(--fg);
 }
+
+/* ---------- Hour grid (day/) ---------- */
+.strip {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+  scrollbar-width: none;
+}
+.chip-task {
+  flex: none;
+  max-width: 60vw;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip-task.done {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+.grid-main {
+  padding-block: 8px 24px;
+}
+.hgrid {
+  position: relative;
+  --gutter: 48px;
+}
+.hg-hour {
+  position: absolute;
+  inset-inline: 0;
+  height: 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--faint);
+}
+.hg-label {
+  position: absolute;
+  inset-inline-start: 0;
+  top: -8px;
+  background: var(--page);
+  padding-inline-end: 6px;
+}
+.hg-sleep {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-inline: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+.hg-gap {
+  position: absolute;
+  inset-inline: var(--gutter) 0;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  font-size: 12px;
+  pointer-events: none;
+}
+.hg-block {
+  position: absolute;
+  inset-inline-start: calc(var(--gutter) + (100% - var(--gutter)) * var(--c) / var(--n));
+  width: calc((100% - var(--gutter)) / var(--n) - 3px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border-inline-start: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--fg);
+  text-align: start;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.hg-block.overlap {
+  border-inline-start-color: var(--tag-fg);
+  background: var(--tag-bg);
+}
+.hg-block.done {
+  opacity: 0.55;
+}
+.hg-block.done .hg-block.short {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-block: 0;
+}
+.hg-title {
+  text-decoration: line-through;
+}
+.hg-block.current {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.hg-block.short {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-block: 0;
+}
+.hg-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hg-time {
+  font-size: 12px;
+  color: var(--muted);
+}
+.hg-slot {
+  position: absolute;
+  inset-inline: var(--gutter) 0;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+.hg-now {
+  position: absolute;
+  inset-inline: calc(var(--gutter) - 6px) 0;
+  height: 0;
+  border-top: 2px solid var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.hg-now::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sheet-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}

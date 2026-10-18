@@ -22,7 +22,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  const key = req.mode === 'navigate' ? './' : req;
+  // Each page is cached under its own folder: ./ and day/.
+  const key = req.mode === 'navigate' ? (/\/day\/(index\.html)?$/.test(new URL(req.url).pathname) ? 'day/' : './') : req;
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(key, { ignoreSearch: true });
