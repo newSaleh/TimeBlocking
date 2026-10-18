@@ -2,7 +2,6 @@
 
 const AR = {
   dayView: 'يومي بالساعات',
-  listView: 'القائمة',
   addAt: 'أضف مهمة الساعة {time}…',
   freeTime: 'وقت فارغ · {d}',
   sleepTitle: 'ساعات النوم',
@@ -21,9 +20,6 @@ const AR = {
   timerUntil: 'حتى',
   timerStop: 'إيقاف',
   timerDone: 'انتهى الوقت',
-  phoneTimer: 'مؤقت الآيفون',
-  phoneTimerHint: 'مؤقت الصفحة لا يرن إذا قُفل الجوال. هذا الاختصار يشغّل مؤقت تطبيق الساعة فيرن دائمًا. أضفه مرة واحدة، ثم يكفي زر 📱: يأخذ الوقت المتبقي، أو 30 دقيقة.',
-  phoneTimerHave: 'أضفته، شغّل المؤقت',
   repeatLabel: 'التكرار',
   repeatNone: 'لا يتكرر',
   repeatDaily: 'يوميًا',
@@ -196,7 +192,6 @@ const AR = {
 
 const EN = {
   dayView: 'Day by the hour',
-  listView: 'List',
   addAt: 'Add a task at {time}…',
   freeTime: 'Free · {d}',
   sleepTitle: 'Sleep hours',
@@ -215,9 +210,6 @@ const EN = {
   timerUntil: 'until',
   timerStop: 'Stop',
   timerDone: 'Time is up',
-  phoneTimer: 'iPhone timer',
-  phoneTimerHint: 'The page timer cannot ring on a locked phone. This shortcut starts the Clock app timer, which always rings. Add it once; then 📱 uses the time left, or 30 minutes.',
-  phoneTimerHave: 'Added it, start the timer',
   repeatLabel: 'Repeat',
   repeatNone: 'Never',
   repeatDaily: 'Daily',

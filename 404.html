@@ -2918,7 +2918,6 @@ function claudeRemote(db, uid) {
 
 const AR = {
   dayView: 'يومي بالساعات',
-  listView: 'القائمة',
   addAt: 'أضف مهمة الساعة {time}…',
   freeTime: 'وقت فارغ · {d}',
   sleepTitle: 'ساعات النوم',
@@ -2937,9 +2936,6 @@ const AR = {
   timerUntil: 'حتى',
   timerStop: 'إيقاف',
   timerDone: 'انتهى الوقت',
-  phoneTimer: 'مؤقت الآيفون',
-  phoneTimerHint: 'مؤقت الصفحة لا يرن إذا قُفل الجوال. هذا الاختصار يشغّل مؤقت تطبيق الساعة فيرن دائمًا. أضفه مرة واحدة، ثم يكفي زر 📱: يأخذ الوقت المتبقي، أو 30 دقيقة.',
-  phoneTimerHave: 'أضفته، شغّل المؤقت',
   repeatLabel: 'التكرار',
   repeatNone: 'لا يتكرر',
   repeatDaily: 'يوميًا',
@@ -3112,7 +3108,6 @@ const AR = {
 
 const EN = {
   dayView: 'Day by the hour',
-  listView: 'List',
   addAt: 'Add a task at {time}…',
   freeTime: 'Free · {d}',
   sleepTitle: 'Sleep hours',
@@ -3131,9 +3126,6 @@ const EN = {
   timerUntil: 'until',
   timerStop: 'Stop',
   timerDone: 'Time is up',
-  phoneTimer: 'iPhone timer',
-  phoneTimerHint: 'The page timer cannot ring on a locked phone. This shortcut starts the Clock app timer, which always rings. Add it once; then 📱 uses the time left, or 30 minutes.',
-  phoneTimerHave: 'Added it, start the timer',
   repeatLabel: 'Repeat',
   repeatNone: 'Never',
   repeatDaily: 'Daily',
@@ -3929,11 +3921,12 @@ function setupGridEvents() {
     if (!timer.end && !(document.activeElement && document.activeElement.tagName === 'SELECT')) renderTimer();
   }, 60000);
   $('printBtn').addEventListener('click', () => window.print());
+  $('sleepBtn').addEventListener('click', () => openSheet('sleep'));
 }
 
 // --- Timer: counts down on the page; the screen stays on while it runs.
-// Safari does not ring a web timer on a locked phone, so it is only shown
-// while the page is open.
+// Safari does not ring a web timer on a locked phone: it rings only while
+// the page is open.
 
 const timer = { end: Number(prefs.get('timerEnd')) || 0, iv: null, lock: null, audio: null };
 
@@ -4033,48 +4026,14 @@ function untilMs(time) {
   return at - d;
 }
 
-// The Clock app's own timer rings on a locked iPhone; a shortcut starts it.
-const TIMER_SHORTCUT = 'Pocket Time Timer';
-const TIMER_SHORTCUT_URL = 'https://newsaleh.github.io/TimeBlocking/shortcut/Pocket%20Time%20Timer.shortcut';
-
-function phoneTimer() {
-  if (!prefs.get('timerShortcut')) return openSheet('phoneTimer');
-  const left = timer.end - Date.now();
-  const minutes = left > 0 ? Math.max(1, Math.round(left / 60000)) : 30;
-  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(TIMER_SHORTCUT)}&input=text&text=${minutes}`;
-}
-
-function phoneTimerSheet() {
-  return [
-    sheetHead(t('phoneTimer')),
-    h('p', { class: 'sheet-hint' }, t('phoneTimerHint')),
-    h('a', { class: 'btn', href: TIMER_SHORTCUT_URL, target: '_blank', rel: 'noopener', 'data-k': 'getTimer' }, t('shortcutGet')),
-    h(
-      'button',
-      {
-        type: 'button',
-        class: 'text-btn',
-        'data-k': 'haveTimer',
-        onclick: () => {
-          prefs.set('timerShortcut', '1');
-          closeSheet();
-          phoneTimer();
-        },
-      },
-      t('phoneTimerHave'),
-    ),
-  ];
-}
-
 function renderTimer() {
   if (!DAY_VIEW) return;
   const box = timerBox;
-  const phone = h('button', { type: 'button', class: 'timer-btn', 'aria-label': t('phoneTimer'), onclick: phoneTimer }, '📱');
   if (timer.end > Date.now()) {
     box.replaceChildren(
       h('span', { class: 'timer-left tnum', id: 'timerLeft', role: 'timer' }, countdownText(timer.end - Date.now())),
       h('span', { class: 'timer-until' }, t('timerUntil'), ' ', timeEl(nowTime(new Date(timer.end)))),
-      h('div', { class: 'timer-row' }, phone, h('button', { type: 'button', class: 'timer-btn timer-stop', onclick: stopTimer }, t('timerStop'))),
+      h('div', { class: 'timer-row' }, h('button', { type: 'button', class: 'timer-btn timer-stop', onclick: stopTimer }, t('timerStop'))),
     );
     return;
   }
@@ -4090,7 +4049,7 @@ function renderTimer() {
   );
   box.replaceChildren(
     h('span', { class: 'timer-left idle tnum' }, '30:00'),
-    h('div', { class: 'timer-row' }, h('button', { type: 'button', class: 'timer-btn timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')), sel, phone),
+    h('div', { class: 'timer-row' }, h('button', { type: 'button', class: 'timer-btn timer-go', onclick: () => startTimer(30 * 60 * 1000) }, t('timer30')), sel),
   );
 }
 
@@ -4190,8 +4149,10 @@ function applyLang() {
   $('newTask').setAttribute('aria-label', t('addPlaceholder'));
   $('week').setAttribute('aria-label', t('dateLabel'));
   $('parseIgnore').textContent = t('ignoreParse');
-  $('viewLink').setAttribute('aria-label', t(DAY_VIEW ? 'listView' : 'dayView'));
-  if (DAY_VIEW) $('printBtn').setAttribute('aria-label', t('print'));
+  if (DAY_VIEW) {
+    $('printBtn').setAttribute('aria-label', t('print'));
+    $('sleepBtn').setAttribute('aria-label', t('sleepTitle'));
+  } else $('viewLink').setAttribute('aria-label', t('dayView'));
 }
 
 // ---------------------------------------------------------------------------
@@ -4339,7 +4300,7 @@ function renderSheet(first) {
   if (s.kind === 'task') renderTaskSheet(first);
   else if (s.kind === 'import') renderImportSheet(first);
   else if (first || !s.static) {
-    const builders = { sleep: sleepSheet, phoneTimer: phoneTimerSheet, settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
+    const builders = { sleep: sleepSheet, settings: settingsSheet, carry: carrySheet, calendar: calendarSheet, confirmDelete: confirmDeleteSheet };
     $('sheet').replaceChildren(...builders[s.kind]());
   }
   if (focusKey && !first) {

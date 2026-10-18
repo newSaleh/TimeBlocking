@@ -693,7 +693,7 @@ await step('Time box sheet (day/): same tasks in :00/:30 cells, tap a cell to ad
   await P.reload();
   await P.waitForSelector('.tb-sleep');
   assert((await P.locator('.tb tbody tr[data-hour]').count()) === 17, 'sleep folded');
-  await P.click('.tb-sleep button >> nth=0');
+  await P.click('#sleepBtn');
   await P.click('#sheet [data-k="sleep-off"]');
   await closeSheet(P);
   await poll(async () => (await P.locator('.tb tbody tr[data-hour]').count()) === 24, 'sleep off');
@@ -707,7 +707,8 @@ await step('Time box sheet (day/): same tasks in :00/:30 cells, tap a cell to ad
   await P.emulateMedia({ media: 'print' });
   assert(await P.isHidden('.composer'), 'print hides the app chrome');
   await P.emulateMedia({ media: 'screen' });
-  await P.click('#viewLink');
+  assert(!(await P.locator('#viewLink').count()), 'no link back on the paper page');
+  await P.goto('http://localhost:4173/');
   await row(P, 'مراجعة').waitFor();
   await row(P, '★ التقرير').waitFor();
 });
